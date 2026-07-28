@@ -1,0 +1,9 @@
+# Use this workspace to collaborate
+workspace:
+  id: 8e882882-2918-4f49-a3ef-22f88bc827eb
+
+localResources:
+  specs:
+    - ..\docs\api-specs\auth-service.yaml
+    - ..\docs\api-specs\service-a.yaml
+    - ..\docs\api-specs\service-b.yaml

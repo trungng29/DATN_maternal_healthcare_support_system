@@ -1,0 +1,20 @@
+$kind: http-request
+name: đăng ký
+url: http://localhost:3001/auth/register
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: "{\r
+
+    \  \"email\": \"patient@example.com\",\r
+
+    \  \"password\": \"Password123\",\r
+
+    \  \"fullName\": \"Nguyễn Thị A\",\r
+
+    \  \"phoneNumber\": \"0901234567\"\r
+
+    }\r\n"
+order: 1785083052860

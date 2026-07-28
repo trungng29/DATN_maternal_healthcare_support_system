@@ -1,0 +1,23 @@
+$kind: http-request
+url: http://localhost:3001/auth/admin/users
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"email\": \"doctor@hospital.com\",\r
+
+    \  \"password\": \"Password123\",\r
+
+    \  \"fullName\": \"Bác sĩ Nguyễn Văn B\",\r
+
+    \  \"phoneNumber\": \"0912345678\",\r
+
+    \  \"role\": \"DOCTOR\"\r
+
+    }\r\n"
+auth:
+  type: bearer
+  credentials:
+    token: "{{json_web_token_0zte}}"
+order: 3865787636542020

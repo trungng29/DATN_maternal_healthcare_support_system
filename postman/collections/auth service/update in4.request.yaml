@@ -1,0 +1,18 @@
+$kind: http-request
+name: update in4
+url: http://localhost:3001/auth/me
+method: PATCH
+body:
+  type: json
+  content: "{\r
+
+    \"fullName\": \"Patient Bob\",\r
+
+    \"phoneNumber\": \"0915622726\"\r
+
+    }"
+auth:
+  type: bearer
+  credentials:
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkYTUzMDc1ZS1jMTRhLTQ0NjUtOTllZS0wYzFiNGRhMTAzZjUiLCJlbWFpbCI6InBhdGllbnRAZXhhbXBsZS5jb20iLCJyb2xlIjoiUEFUSUVOVCIsImlhdCI6MTc4NTI0MjY1OCwiZXhwIjoxNzg1MjQ2MjU4fQ.qRGavaCvrQawF2pbZiJDHrURZeuocbbqtU1NKMDTTmE
+order: 3841227468694271

@@ -1,0 +1,8 @@
+$kind: http-request
+url: http://localhost:3001/auth/admin/users/69546bec-0879-4e8d-821c-d9b52a6cf67e
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: "{{json_web_token_0zte}}"
+order: 3884985873604840
