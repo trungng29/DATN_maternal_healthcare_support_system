@@ -211,7 +211,8 @@ Dịch vụ tác vụ được sử dụng ở đây vì các hành động này
 |------------------|--------------:|
 | Bệnh nhân | /patients |
 | Bác sĩ | /doctors |
-| Danh mục dịch vụ khám | /services |
+| Danh mục dịch vụ | /services |
+| Xác thực | /auth |
 | Lịch hẹn | /appointments |
 | Quy trình đặt lịch | /appointment-bookings |
 | Quy trình nhập khám | /check-ins |
@@ -233,6 +234,11 @@ Dịch vụ tác vụ được sử dụng ở đây vì các hành động này
 | Dịch vụ Bệnh nhân | Cập nhật hồ sơ bệnh nhân | /patients/{patientId} | PATCH |
 | Dịch vụ Bệnh nhân | Truy xuất hồ sơ bệnh nhân | /patients/{patientId} | GET |
 | Dịch vụ Bệnh nhân | Xem tóm tắt bệnh nhân qua các lần khám | /patients/{patientId}/summary | GET |
+| Dịch vụ Xác thực | Đăng ký tài khoản | /auth/register | POST |
+| Dịch vụ Xác thực | Đăng nhập | /auth/login | POST |
+| Dịch vụ Xác thực | Làm mới token | /auth/refresh | POST |
+| Dịch vụ Xác thực | Đăng xuất | /auth/logout | POST |
+| Dịch vụ Xác thực | Lấy thông tin phiên hiện tại | /auth/me | GET |
 | Dịch vụ Bác sĩ | Liệt kê bác sĩ theo dịch vụ | /doctors?serviceId={serviceId} | GET |
 | Dịch vụ Bác sĩ | Truy xuất lịch làm việc của bác sĩ | /doctors/{doctorId}/availability | GET |
 | Dịch vụ Bác sĩ | Truy xuất hồ sơ bác sĩ | /doctors/{doctorId} | GET |
@@ -373,6 +379,25 @@ sequenceDiagram
     BIL-->>APT: invoiceId hoặc "không phát sinh"
 ```
 
+### 2.9 Luồng Xác Thực
+
+Dịch vụ Xác thực đứng riêng để tập trung xử lý tài khoản, mật khẩu băm, phát hành token và phân quyền theo vai trò.
+
+```mermaid
+sequenceDiagram
+    participant Client as Khách hàng
+    participant AuthService as Dịch vụ Xác thực
+
+    Client->>AuthService: POST /auth/login
+    AuthService->>AuthService: Kiểm tra thông tin đăng nhập
+    AuthService->>AuthService: Tạo access token và refresh token
+    AuthService-->>Client: Trả token và thông tin vai trò
+    Client->>AuthService: POST /auth/refresh
+    AuthService->>AuthService: Xác thực refresh token
+    AuthService->>AuthService: Phát hành access token mới
+    AuthService-->>Client: Trả token mới
+```
+
 ---
 
 ## Phần 3 — Thiết kế Hướng Dịch vụ
@@ -470,6 +495,17 @@ sequenceDiagram
 | /notifications?recipientId={id} | GET | application/json | Không có | 200 |
 | /notifications/{notificationId}/read | PATCH | application/json | Không có | 200, 404 |
 
+**Dịch vụ C: Dịch vụ Xác thực**
+
+| Endpoint | Phương thức | Kiểu dữ liệu | Yêu cầu | Mã phản hồi |
+|----------|------------|-------------|---------|--------------|
+| /health | GET | application/json | Không có | 200 |
+| /auth/register | POST | application/json | AuthRegisterRequest | 201, 400, 409 |
+| /auth/login | POST | application/json | AuthLoginRequest | 200, 400, 401 |
+| /auth/refresh | POST | application/json | RefreshTokenRequest | 200, 401, 403 |
+| /auth/logout | POST | application/json | LogoutRequest | 204, 401 |
+| /auth/me | GET | application/json | Không có | 200, 401 |
+
 ### 3.2 Thiết kế Luồng Xử lý của Dịch vụ
 
 Luồng xử lý nội bộ cho từng dịch vụ.
@@ -488,7 +524,27 @@ flowchart TD
     G --> H[Trả phản hồi 2xx]
 ```
 
-**Dịch vụ Lịch hẹn (Appointment Service)**
+**Dịch vụ C: Dịch vụ Xác thực**
+
+```mermaid
+flowchart TD
+    A[Nhận yêu cầu] --> B{Hợp lệ?}
+    B -->|Không hợp lệ| C[Trả lỗi 4xx]
+    B -->|Hợp lệ| D{Loại yêu cầu?}
+    D -->|Đăng ký| E[Kiểm tra tài khoản trùng và băm mật khẩu]
+    D -->|Đăng nhập| F[Xác minh mật khẩu và vai trò]
+    D -->|Làm mới token| G[Xác thực refresh token]
+    D -->|Đăng xuất| H[Thu hồi phiên/tokens]
+    E --> I[(Lưu tài khoản và vai trò)]
+    F --> J[(Phát hành access token và refresh token)]
+    G --> J
+    H --> K[(Xóa hoặc đánh dấu token đã thu hồi)]
+    I --> L[Trả phản hồi tạo tài khoản]
+    J --> M[Trả token xác thực]
+    K --> N[Trả phản hồi đăng xuất]
+```
+
+**Dịch vụ B: Dịch vụ Lịch hẹn**
 
 ```mermaid
 flowchart TD
