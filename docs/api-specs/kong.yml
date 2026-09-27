@@ -73,6 +73,14 @@ services:
           minute: 120
           policy: local
 
+
+  - name: service-catalog-service
+    url: http://service-catalog-service:5007
+    routes:
+      - name: service-catalog-service-route
+        paths: [/api/catalog]
+        strip_path: true
+
   - name: sample-service
     url: http://sample-service:5000
     routes:

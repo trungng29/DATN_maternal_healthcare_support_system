@@ -25,6 +25,7 @@ services:
       receptionist-service:
         condition: service_started
       patient-service: { condition: service_started }
+      service-catalog-service: { condition: service_started }
     environment:
       KONG_DATABASE: postgres
       KONG_PG_HOST: kong-database
@@ -299,6 +300,58 @@ services:
       retries: 10
     networks: [app-network]
 
+
+  # Service Catalog Service owns medical service catalog and pricing snapshot source.
+  catalog-migrate:
+    build:
+      context: ./services
+      dockerfile: Dockerfile
+      target: migrator
+      args: { APP_NAME: service-catalog-service }
+    environment:
+      PRISMA_SCHEMA: prisma/catalog/schema.prisma
+      CATALOG_DATABASE_URL: "postgresql://${CATALOG_DB_USER:-catalog}:${CATALOG_DB_PASSWORD:-catalogpass}@catalog-database:5432/${CATALOG_DB_NAME:-catalog}?schema=public"
+    depends_on:
+      catalog-database: { condition: service_healthy }
+    networks: [app-network]
+
+  service-catalog-service:
+    build: { context: ./services, dockerfile: Dockerfile, args: { APP_NAME: service-catalog-service } }
+    ports:
+      - "${CATALOG_SERVICE_PORT:-5007}:5007"
+    environment:
+      PORT: 5007
+      CATALOG_DATABASE_URL: "postgresql://${CATALOG_DB_USER:-catalog}:${CATALOG_DB_PASSWORD:-catalogpass}@catalog-database:5432/${CATALOG_DB_NAME:-catalog}?schema=public"
+      AUTH_JWT_PUBLIC_KEY: "${AUTH_JWT_PUBLIC_KEY:-}"
+      AUTH_JWT_KEY_ID: "${AUTH_JWT_KEY_ID:-local-dev-key}"
+      AUTH_JWT_ISSUER: "${AUTH_JWT_ISSUER:-maternal-healthcare-auth}"
+      AUTH_JWT_AUDIENCE: "${AUTH_JWT_AUDIENCE:-maternal-healthcare-api}"
+      INTERNAL_SERVICE_AUTH_SECRET: "${INTERNAL_SERVICE_AUTH_SECRET:-local-dev-internal-secret}"
+    depends_on:
+      catalog-migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://localhost:5007/ready >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks: [app-network]
+
+  catalog-database:
+    image: postgres:16-alpine
+    ports:
+      - "${CATALOG_DB_PORT:-5437}:5432"
+    environment:
+      POSTGRES_DB: "${CATALOG_DB_NAME:-catalog}"
+      POSTGRES_USER: "${CATALOG_DB_USER:-catalog}"
+      POSTGRES_PASSWORD: "${CATALOG_DB_PASSWORD:-catalogpass}"
+    volumes: [catalog-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [app-network]
+
   sample-service:
     build: { context: ./services, dockerfile: Dockerfile, args: { APP_NAME: sample-service } }
     ports:
@@ -314,3 +367,4 @@ volumes:
   receptionist-data:
   doctor-data:
   patient-data: {}
+  catalog-data: {}

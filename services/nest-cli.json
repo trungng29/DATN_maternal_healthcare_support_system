@@ -54,6 +54,15 @@
       "compilerOptions": {
         "tsConfigPath": "apps/sample-service/tsconfig.app.json"
       }
+    },
+    "service-catalog-service": {
+      "type": "application",
+      "root": "apps/service-catalog-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/service-catalog-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/service-catalog-service/tsconfig.app.json"
+      }
     }
   }
 }

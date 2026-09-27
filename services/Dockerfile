@@ -9,7 +9,8 @@ COPY . .
 # Generate all Prisma clients required by services sharing this image.
 RUN npm run prisma:generate \
     && npm run prisma:generate:doctor \
-    && npm run prisma:generate:patient
+    && npm run prisma:generate:patient \
+    && npm run prisma:generate:catalog
 
 ARG APP_NAME=auth-service
 RUN npx nest build $APP_NAME
@@ -38,5 +39,5 @@ ARG APP_NAME=auth-service
 ENV APP_NAME=$APP_NAME
 ENV PORT=3000
 
-EXPOSE 3000 5000 5001 5003 5004 5005 5006 5006
+EXPOSE 3000 5000 5001 5003 5004 5005 5006 5007
 CMD ["sh", "-c", "exec node dist/apps/$APP_NAME/main.js"]
