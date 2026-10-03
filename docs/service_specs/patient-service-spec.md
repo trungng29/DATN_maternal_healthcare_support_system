@@ -79,8 +79,8 @@ Không để Auth Service synchronously gọi Patient Service và không dùng d
 |---|---|---|---|
 | `PATIENT` | Tạo/lấy/cập nhật profile của mình; quản lý emergency contacts | JWT role `PATIENT` | `patient.authAccountId == JWT.sub` |
 | `RECEPTIONIST` | Tạo Patient tại quầy; tra cứu/detail/update phục vụ check-in | JWT role `RECEPTIONIST` | Phase đầu là institution-wide trusted role; bắt buộc audit, rate limit và data minimization vì JWT chưa có facility scope |
-| `Appointment Service` | Kiểm tra Patient tồn tại và profile có đủ điều kiện đặt lịch | Internal service auth — chưa có implementation hiện tại | Chỉ nhận dữ liệu tối thiểu: `patientId`, `profileStatus` |
-| `Check-in Service` | Lấy dữ liệu định danh tối thiểu để lễ tân đối chiếu | Internal service auth — chưa có implementation hiện tại | Không được cập nhật Patient trực tiếp nếu không qua endpoint có audit |
+| `Appointment Service` | `PatientInternalService.GetPatientEligibility` | Target gRPC + service JWT; chưa implemented | Minimum eligibility/version |
+| `Receptionist/Medical Record` | `SearchPatients` hoặc `GetPatientIdentity` | Target gRPC + service JWT; chưa implemented | Minimum masked identity theo purpose |
 | `DOCTOR/NURSE` | Không có API Patient riêng trong phase đầu | N/A | Dữ liệu cần thiết lấy qua Medical Record/encounter flow sau này |
 | `ADMIN` | Không mặc định được đọc toàn bộ PII | N/A trong phase đầu | Admin role không tự động vượt qua resource-level authorization |
 
@@ -192,7 +192,6 @@ Phase đầu chỉ tạo Patient khi có đủ `fullName`, `dateOfBirth`, `phone
 | API-005 | PATCH | `/patients/{patientId}` | Cập nhật Patient tại quầy | `RECEPTIONIST` — BLOCKED, audited |
 | API-006 | POST | `/patients/search` | Tìm Patient phục vụ check-in; dùng body để tránh PII trong URL | `RECEPTIONIST` — BLOCKED |
 | API-007 | POST | `/patients` | Tạo Patient tại quầy chưa có Auth account | `RECEPTIONIST` — BLOCKED |
-| API-008 | GET | `/internal/patients/{patientId}/eligibility` | Kiểm tra tồn tại và profile complete | FUTURE/BLOCKED theo service-auth |
 | API-009 | POST | `/patients/{patientId}/emergency-contacts` | Thêm emergency contact | Own PATIENT hoặc RECEPTIONIST |
 | API-010 | PATCH | `/patients/{patientId}/emergency-contacts/{contactId}` | Cập nhật emergency contact | Own PATIENT hoặc RECEPTIONIST |
 | API-011 | DELETE | `/patients/{patientId}/emergency-contacts/{contactId}` | Xóa emergency contact | Own PATIENT hoặc RECEPTIONIST |
@@ -278,7 +277,7 @@ Request create omit `version`. Request update gửi cùng full representation v�
 
 ### API-004 — `GET /patients/{patientId}`
 
-- **Authorization:** RECEPTIONIST only trong phase đầu; PATIENT dùng `/patients/me`. Internal service dùng API-008 sau khi service-auth được approve.
+- **Authorization:** RECEPTIONIST only trong phase đầu; PATIENT dùng `/patients/me`. Internal service dùng target gRPC, không public REST.
 - **Success `200`:** `{ id, fullName, dateOfBirth, phoneNumber, nationalIdMasked, address, version, emergencyContacts }` với `Cache-Control: no-store`.
 - **Errors:** `400 INVALID_PATIENT_ID`, `401`, `403`, `404 PATIENT_NOT_FOUND`.
 - Mỗi successful RECEPTIONIST read phải audit `patient.viewed` với purpose `CHECK_IN`.
@@ -315,16 +314,13 @@ Request create omit `version`. Request update gửi cùng full representation v�
 - **Errors:** `400`, `401`, `403`, `409 PATIENT_IDENTITY_CONFLICT`, `409 IDEMPOTENCY_KEY_REUSED`.
 - DB unique `nationalIdLookupHash` là source of truth; phone trùng không block create và không tự merge. Lễ tân nên search trước nếu nghi ngờ trùng.
 
-### API-008 — `GET /internal/patients/{patientId}/eligibility` — FUTURE/BLOCKED
+### Internal gRPC contract (target)
 
-Không implement endpoint này cho đến khi service-to-service authentication được approve. Auth Service hiện chỉ phát user token với một `role`, chưa có service identity/scope.
-
-Contract dự kiến sau khi có service auth:
-
-- Caller có service identity `appointment-service` hoặc `check-in-service` và scope `patient:eligibility:read`.
-- Patient tồn tại: `200 { data: { patientId, exists: true, profileStatus: "COMPLETE", eligibleForBooking: true, missingFields: [] } }`.
-- Patient không tồn tại: `200 { data: { patientId, exists: false, profileStatus: null, eligibleForBooking: false, missingFields: [] } }`.
-- Không trả phone, national ID, address hoặc emergency contacts.
+- **Proto:** `docs/grpc/patient/v1/patient_internal.proto`.
+- `GetPatientEligibility`: Appointment nhận existence/active/profile completeness/version; không nhận PII thừa.
+- `GetPatientIdentity`: Reception/Medical nhận minimum demographic theo purpose và caller scope.
+- `SearchPatients`: Reception tra cứu có masking, audit và giới hạn enumeration.
+- Auth: RS256 service JWT theo audience/scope; HTTP internal hiện có chỉ là compatibility cần migration.
 
 ### API-009 — `POST /patients/{patientId}/emergency-contacts`
 
@@ -529,7 +525,7 @@ And response không chứa authAccountId hoặc audit metadata
 ```gherkin
 Given Patient P1 tồn tại với đủ fullName, dateOfBirth và phoneNumber hợp lệ
 And Appointment Service được internal-authenticated
-When gọi GET /internal/patients/P1/eligibility
+When Appointment gọi PatientInternalService.GetPatientEligibility cho P1
 Then service trả eligibleForBooking = true và missingFields rỗng
 And không trả phoneNumber, nationalId, address hoặc emergency contacts
 ```
@@ -640,8 +636,8 @@ Inbound consumers dự kiến:
 
 | Consumer | Operation | Mục đích | Data trả về |
 |---|---|---|---|
-| Appointment Service | Eligibility endpoint | Check Patient đủ điều kiện đặt lịch | ID, status, eligibility, missing fields |
-| Check-in Service | `GET /patients/{id}` hoặc search | Đối chiếu định danh tại quầy | Minimum necessary masked profile |
+| Appointment Service | gRPC `GetPatientEligibility` | Check booking eligibility | ID, active/profileComplete/eligibility/version |
+| Receptionist Service | gRPC `SearchPatients`/`GetPatientIdentity` | Đối chiếu tại quầy | Minimum masked profile |
 
 ### Events
 

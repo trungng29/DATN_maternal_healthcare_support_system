@@ -38,19 +38,3 @@ paths:
       summary: List active category/tag filters
       responses:
         '200': { description: OK }
-  /internal/services/{serviceId}/eligibility:
-    get:
-      summary: Resolve service pricing snapshot for appointment service
-      parameters:
-        - in: path
-          name: serviceId
-          required: true
-          schema: { type: string, format: uuid }
-        - in: query
-          name: doctorRankCode
-          schema: { type: string }
-        - in: query
-          name: at
-          schema: { type: string, format: date-time }
-      responses:
-        '200': { description: OK }

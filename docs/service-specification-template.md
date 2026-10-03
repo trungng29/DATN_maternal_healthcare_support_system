@@ -95,11 +95,12 @@ Invalid transition: trả `409 INVALID_STATE_TRANSITION`, không đổi dữ li�
 
 ---
 
-## 4. API Contract
+## 4. Public REST API Contract
 
 - **OpenAPI:** `docs/api-specs/<service-name>.yaml`
 - **Base path:** `[/api/...]`
-- **Authentication:** [JWT qua Kong / Internal / Public]
+- **Authentication:** JWT qua Kong; business service vẫn enforce resource-level authorization.
+- Internal service call không được mô tả như public REST; dùng section gRPC riêng bên dưới.
 
 ### Endpoint summary
 
@@ -258,6 +259,19 @@ And [điều không được xảy ra]
 
 ## 8. Integrations và Failure Behavior
 
+### Internal gRPC contract
+
+- **Proto:** `docs/grpc/<domain>/v1/<domain>_internal.proto`
+- **Package:** `maternal.<domain>.v1`
+- **Authentication:** RS256 service JWT, caller allowlist, audience và scope theo RPC.
+- **Metadata:** request/correlation ID; command có stable idempotency key.
+- **Deadline/retry:** ghi rõ per RPC; chỉ retry operation safe/idempotent, không retry vô hạn.
+
+| RPC | Caller | Mục đích | Idempotency | Deadline/failure |
+|---|---|---|---|---|
+| `[GetResource]` | `[Caller Service]` | [...] | Read-only | [deadline; gRPC status] |
+| `[CreateResource]` | `[Caller Service]` | [...] | Stable key | [outcome lookup/reconciliation] |
+
 ### Dependencies
 
 | Dependency | Operation | Required? | Timeout/Retry | Khi lỗi |
@@ -269,7 +283,11 @@ And [điều không được xảy ra]
 - Không retry vô hạn; chỉ retry operation an toàn/idempotent.
 - Ghi rõ dependency nào được phép fail mà không block business flow.
 
-### Events
+### RabbitMQ domain events
+
+- Producer ghi business state và outbox trong cùng local transaction.
+- Delivery at-least-once; consumer dedupe/inbox theo `eventId`.
+- Quy định exchange/routing key/retry/DLQ theo `docs/integration/rabbitmq-event-catalog.md`.
 
 | Event | Direction | Producer/Consumer | Trigger/Handling |
 |---|---|---|---|

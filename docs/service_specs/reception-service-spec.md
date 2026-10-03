@@ -3,7 +3,7 @@
 > **Service:** `receptionist-service`  
 > **Port:** `5006`  
 > **Public gateway path:** `/api/receptionists`  
-> **Status:** Receptionist profile operations implemented; Admission orchestration blocked by downstream contracts  
+> **Status:** Receptionist profile operations implemented; Admission orchestration là **APPROVED target / NOT_IMPLEMENTED** trong source hiện tại
 > **Scope decision:** Chỉ quản lý hồ sơ nghiệp vụ cơ bản của lễ tân. Không quản lý ca làm.
 
 ---
@@ -13,7 +13,7 @@
 Receptionist Service có hai trách nhiệm kiến trúc:
 
 1. Quản lý hồ sơ nghiệp vụ tối thiểu của lễ tân để xác định ai được thực hiện tiếp nhận.
-2. Trong phase tương lai, làm process manager/Saga orchestrator cho quy trình bệnh nhân đến quầy, đối chiếu hồ sơ, thanh toán và vào khám.
+2. Theo target architecture đã duyệt, làm process manager/Saga orchestrator cho quy trình bệnh nhân đến quầy, đối chiếu hồ sơ, thanh toán và vào khám. Phần này chưa được implement.
 
 ### Chịu trách nhiệm hiện tại
 
@@ -32,7 +32,7 @@ Receptionist Service có hai trách nhiệm kiến trúc:
 - Lương, hợp đồng, tuyển dụng, kỷ luật và dữ liệu HR khác.
 - Hồ sơ bệnh nhân — Patient Service sở hữu.
 - Lịch hẹn/check-in — Appointment Service sở hữu.
-- Hóa đơn/thanh toán/refund — Billing Service sở hữu.
+- Hóa đơn/payment/approved credit/void invoice chưa trả — Billing Service sở hữu; refund không thuộc scope hệ thống.
 - Hồ sơ khám — Medical Record Service sở hữu.
 - Số thứ tự/độ ưu tiên — Queue Service sở hữu.
 
@@ -48,7 +48,7 @@ Luồng public:
 Frontend → Kong → Receptionist Service
 ```
 
-Khi Admission được mở, Receptionist Service gọi downstream trực tiếp bằng synchronous REST trên Docker network:
+Khi Admission được triển khai, Receptionist Service gọi downstream trực tiếp bằng **gRPC trên internal network**, không dùng REST và không đi vòng qua Kong:
 
 ```text
 Receptionist Service
@@ -60,7 +60,7 @@ Receptionist Service
 └── Queue Service
 ```
 
-Business service không gọi vòng qua Kong. Mỗi internal client phải có timeout, request/correlation ID, service authentication đã được approve và idempotency contract cho write.
+Business service không gọi vòng qua Kong. Mỗi gRPC client phải có deadline, request/correlation ID, RS256 service JWT đúng audience/scope và stable idempotency key cho command. Không dùng user JWT hoặc unsigned service-name header làm service identity.
 
 ### Xác thực request hiện tại
 
@@ -378,7 +378,7 @@ Idempotency-Key: <uuid>
 
 ---
 
-## 6. Admission Orchestration — FUTURE/BLOCKED
+## 6. Admission Orchestration — APPROVED TARGET / NOT_IMPLEMENTED
 
 ### Release gate
 
@@ -388,7 +388,7 @@ API-101..107 chỉ là contract định hướng. Trong phase hiện tại:
 - Không tạo mock/fake/hard-coded downstream response.
 - Không tự đoán path, DTO hoặc error code của downstream.
 - Không query database downstream.
-- Chỉ triển khai sau khi đọc source/test/OpenAPI thật và chốt service authentication.
+- Chỉ triển khai sau khi generated gRPC stubs, proto contract tests, service JWT scopes và downstream outcome lookup đã sẵn sàng.
 
 ### Endpoint định hướng
 
@@ -421,11 +421,13 @@ Không được cho vào khám trước khi hoàn tất đối chiếu và đáp
 
 ```text
 VALIDATE_APPOINTMENT
-→ CREATE_INVOICE
-→ VERIFY_PAYMENT
-→ OPEN_MEDICAL_RECORD
+→ VERIFY_PATIENT_IDENTITY
+→ OPEN_RECEPTION_CASE
+→ CREATE_OR_GET_BASE_INVOICE
+→ VERIFY_PAYMENT_OR_APPROVED_CREDIT
+→ OPEN_CLINICAL_ENCOUNTER_DRAFT
 → CHECK_IN_APPOINTMENT
-→ CREATE_QUEUE_TICKET
+→ CREATE_AUTHORITATIVE_QUEUE_TICKET
 → DONE
 ```
 
@@ -435,7 +437,7 @@ Nguyên tắc Saga:
 - Chỉ tăng `currentStep` sau khi lưu external ID cần thiết.
 - Retry tiếp tục từ bước dở, không chạy lại bước đã hoàn tất một cách mù quáng.
 - Downstream write dùng stable idempotency key.
-- Invoice chưa paid chuyển `AWAITING_PAYMENT`, không tiếp tục.
+- Invoice chưa PAID và chưa có APPROVED_CREDIT chuyển `AWAITING_PAYMENT`, không check-in và không tạo QueueTicket.
 - Timeout/5xx chuyển `FAILED_RETRYABLE` khi outcome rõ ràng có thể retry.
 - Outcome mơ hồ hoặc vượt retry limit chuyển `MANUAL_REVIEW`.
 - Không rollback tiền/hồ sơ bằng cách sửa database downstream.
@@ -459,7 +461,7 @@ Billing Service:
 
 - Tạo/lấy invoice idempotently.
 - Kiểm tra payment authoritative.
-- Chính sách tiền mặt/công nợ/refund/void.
+- Payment CASH hoặc MANUAL_BANK_TRANSFER, approved credit và void invoice chưa trả; không refund.
 
 Medical Record Service:
 
@@ -501,7 +503,7 @@ Auth Service:
 | `AUTH_JWT_ISSUER` | Yes | `maternal-healthcare-auth` |
 | `AUTH_JWT_AUDIENCE` | Yes | `maternal-healthcare-api` |
 | `AUTH_JWT_KEY_ID` | Yes | `local-dev-key` |
-| `AUTH_SERVICE_BASE_URL` | Khi mở API-002/008 | `http://auth-service:5003` |
+| `AUTH_GRPC_TARGET` | Khi mở API-002/008 | `auth-service:<grpc-port>` |
 | `PATIENT_SERVICE_BASE_URL` | Khi mở Admission | Docker service URL |
 | `APPOINTMENT_SERVICE_BASE_URL` | Khi mở Admission | Docker service URL |
 | `BILLING_SERVICE_BASE_URL` | Khi mở Admission | Docker service URL |
@@ -535,7 +537,7 @@ Auth Service:
 - Reception DB, Prisma schema/migration, audit/idempotency: implemented.
 - Docker Compose và Kong route `/api/receptionists`: implemented.
 - Create/activate Receptionist: blocked bởi Auth internal contract.
-- Admission/Saga/internal HTTP clients: blocked bởi downstream contracts.
+- Admission/Saga/internal gRPC clients: NOT_IMPLEMENTED; target contracts nằm trong `docs/grpc/` và `docs/integration/internal-communication-matrix.md`.
 
 ---
 

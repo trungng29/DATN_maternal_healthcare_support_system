@@ -106,17 +106,6 @@ paths:
       summary: Patient API operation 11
       operationId: patientOperation11
       responses: { '204': { description: Deleted or already absent } }
-  /internal/patients/{patientId}/eligibility:
-    get:
-      servers:
-        - url: http://patient-service:5004
-      summary: Patient API operation 12
-      operationId: patientOperation12
-      description: Service-to-service route; not exposed by the public Kong Patient route.
-      parameters: [{ in: path, name: patientId, required: true, schema: { type: string, format: uuid } }]
-      responses:
-        '200': { description: Minimal eligibility contract }
-        '401': { $ref: '#/components/responses/Error' }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }

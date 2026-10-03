@@ -114,11 +114,6 @@ paths:
       parameters: [{ $ref: '#/components/parameters/DoctorId' }, { name: overrideId, in: path, required: true, schema: { type: string, format: uuid } }, { $ref: '#/components/parameters/IfMatch' }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ReasonRequest' } } } }
       responses: { '200': { $ref: '#/components/responses/DataResponse' } }
-  /internal/doctors/{doctorId}/eligibility:
-    get:
-      summary: Internal eligibility check
-      parameters: [{ $ref: '#/components/parameters/DoctorId' }, { name: specialtyId, in: query, required: true, schema: { type: string, format: uuid } }, { name: startAt, in: query, required: true, schema: { type: string, format: date-time } }, { name: endAt, in: query, required: true, schema: { type: string, format: date-time } }]
-      responses: { '200': { $ref: '#/components/responses/DataResponse' } }
 components:
   securitySchemes: { bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT } }
   parameters:
@@ -140,7 +135,7 @@ components:
     UpdateDoctorRequest: { allOf: [{ $ref: '#/components/schemas/Profile' }, { type: object, properties: { licenseNumber: { type: string } } }] }
     CreateSpecialtyRequest: { type: object, required: [code, name], properties: { code: { type: string }, name: { type: string }, description: { type: string } } }
     SpecialtyLinkRequest: { type: object, required: [isPrimary], properties: { isPrimary: { type: boolean } } }
-    CreateScheduleRequest: { type: object, required: [dayOfWeek, startTime, endTime, effectiveFrom], properties: { dayOfWeek: { type: integer, minimum: 1, maximum: 7 }, startTime: { type: string }, endTime: { type: string }, slotDurationMinutes: { type: integer, enum: [15,20,30,45,60] }, effectiveFrom: { type: string, format: date }, effectiveTo: { type: string, format: date }, timezone: { type: string, example: Asia/Bangkok }, departmentId: { type: string, format: uuid }, roomId: { type: string, format: uuid } } }
+    CreateScheduleRequest: { type: object, required: [dayOfWeek, startTime, endTime, effectiveFrom], properties: { dayOfWeek: { type: integer, minimum: 1, maximum: 7 }, startTime: { type: string }, endTime: { type: string }, slotDurationMinutes: { type: integer, enum: [15,20,30,45,60] }, effectiveFrom: { type: string, format: date }, effectiveTo: { type: string, format: date }, timezone: { type: string, example: Asia/Ho_Chi_Minh }, departmentId: { type: string, format: uuid }, roomId: { type: string, format: uuid } } }
     UpdateScheduleRequest: { $ref: '#/components/schemas/CreateScheduleRequest' }
     CreateAvailabilityRequest: { type: object, required: [type, startAt, endAt, reasonCode], properties: { type: { type: string, enum: [UNAVAILABLE, EXTRA_AVAILABLE] }, startAt: { type: string, format: date-time }, endAt: { type: string, format: date-time }, reasonCode: { type: string }, note: { type: string, maxLength: 500 } } }
     ReasonRequest: { type: object, required: [reason], properties: { reason: { type: string, minLength: 3, maxLength: 500 } } }

@@ -1,4 +1,4 @@
-﻿# Service Catalog Service — Specification
+# Service Catalog Service — Specification
 
 > Trạng thái: Draft cô đọng cho MVP 1 cơ sở phòng khám.  
 > Cập nhật: 2026-09-22.  
@@ -75,7 +75,7 @@ Ví dụ:
 - Chính sách dịch vụ có cần/chọn rank bác sĩ hay không.
 - Bảng phụ phí nâng rank bác sĩ cho luồng dịch vụ.
 - Public search/detail catalog.
-- Internal resolve/eligibility để Appointment lấy snapshot.
+- gRPC `CatalogInternalService.ResolveBookingOffering` và `BatchResolveServices` để consumer lấy snapshot.
 
 ### Catalog không chịu trách nhiệm
 
@@ -242,22 +242,21 @@ Tag không phải quyết định y khoa. Ví dụ `PREGNANT_WOMEN` chỉ phục
 | POST | `/admin/doctor-rank-surcharges` | Schedule phụ phí rank |
 | POST | `/admin/prices/{priceId}/cancel` | Hủy price/surcharge |
 
-### Internal
+### Internal gRPC
 
-| Method | Path | Mục đích |
+| RPC | Caller | Mục đích |
 |---|---|---|
-| GET | `/internal/services/{serviceId}/eligibility` | Appointment resolve service/base price/surcharge |
-| POST | `/internal/services/resolve` | Batch resolve service snapshot |
+| `CatalogInternalService.ResolveBookingOffering` | Appointment | Resolve service/base price/rank surcharge tại booking |
+| `CatalogInternalService.BatchResolveServices` | Medical/Billing/Reporting adapters | Resolve minimum display/version snapshot |
 
+HTTP `/internal/*` nếu còn trong source là compatibility route cần migration; không thuộc target OpenAPI.
+
+---
 ---
 
 ## 6. Pricing response cho Appointment
 
-Request eligibility có thể truyền rank mong muốn:
-
-```text
-GET /internal/services/{serviceId}/eligibility?doctorRankCode=SPECIALIST_II&at=...
-```
+RPC `ResolveBookingOffering` nhận `serviceId`, `doctorRankCode`, `at` và RequestContext; response trả service/base price/surcharge/estimated total snapshot.
 
 Response đề xuất:
 

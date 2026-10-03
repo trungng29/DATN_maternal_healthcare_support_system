@@ -1,4 +1,4 @@
-﻿# Doctor Service — Service Specification
+# Doctor Service — Service Specification
 
 Đặc tả này được xây dựng từ `docs/quy-hoach-microservices-use-case-thai-phu-kham-thai.md`, `docs/use-case-flow-thai-phu-kham-thai.md` và `docs/service-specification-template.md`.
 
@@ -101,7 +101,7 @@ Quy tắc xác thực:
 
 - Client chỉ đi qua Kong/API Gateway; Doctor Service không tin `X-User-Id`, `X-Role` hoặc header identity do client tự gửi.
 - Gateway phải xóa identity headers từ request ngoài trước khi gắn identity đã xác thực.
-- Endpoint `/internal/*` không route công khai và phải dùng cơ chế service authentication đã được nhóm approve.
+- Target contract không expose `/internal/*` qua HTTP. Synchronous internal capability dùng `DoctorInternalService` gRPC với RS256 service JWT; HTTP internal route hiện có trong source chỉ là compatibility cần migration.
 - Role `DOCTOR` không mặc định được sửa hoặc xem hồ sơ nội bộ của bác sĩ khác.
 
 ---
@@ -184,7 +184,7 @@ Lịch làm việc định kỳ theo ngày trong tuần, có khoảng hiệu l�
 | `slotDurationMinutes` | integer | Yes | `30` | Một trong `15, 20, 30, 45, 60` | Kích thước slot gợi ý cho Appointment |
 | `effectiveFrom` | date | Yes | — | Inclusive | Ngày bắt đầu áp dụng |
 | `effectiveTo` | date | No | `null` | Inclusive, `>= effectiveFrom` | `null` nghĩa chưa có ngày kết thúc |
-| `timezone` | string | Yes | `Asia/Bangkok` | IANA timezone; MVP chỉ cho `Asia/Bangkok` | Timezone nghiệp vụ |
+| `timezone` | string | Yes | `Asia/Ho_Chi_Minh` | IANA timezone; MVP chỉ cho `Asia/Ho_Chi_Minh` | Timezone nghiệp vụ |
 | `departmentId` | UUID | No | `null` | Reference Catalog | Khoa nếu đã có Catalog |
 | `roomId` | UUID | No | `null` | Reference Catalog | Phòng nếu đã có Catalog |
 | `status` | `ScheduleStatus` | Yes | `ACTIVE` | Valid enum | Không hard delete |
@@ -258,11 +258,11 @@ Invalid transition trả `409 INVALID_STATE_TRANSITION`, không đổi dữ li�
 
 - **OpenAPI:** `docs/api-specs/doctor-service.yaml` (phải tạo trước hoặc cùng implementation)
 - **Public base path qua Gateway:** `/api/doctors`
-- **Service-local paths:** `/health`, `/doctors`, `/specialties`, `/internal/doctors/...`
-- **Authentication:** JWT được xác thực tại Kong; service vẫn enforce role/ownership. Internal endpoint dùng service authentication và không public route.
+- **Service-local public paths:** `/health`, `/doctors`, `/specialties`
+- **Authentication:** JWT public qua Kong; internal call dùng `maternal.doctor.v1.DoctorInternalService` gRPC với RS256 service JWT, không public/internal REST.
 - **Content type:** `application/json; charset=utf-8`
 - **Timestamp:** ISO-8601 UTC, ví dụ `2026-09-01T01:30:00Z`
-- **Date:** `YYYY-MM-DD` theo `Asia/Bangkok`
+- **Date:** `YYYY-MM-DD` theo `Asia/Ho_Chi_Minh`
 - **Pagination:** cursor-based, mặc định `limit=20`, tối đa `100`
 
 ### Response/error envelope
@@ -307,7 +307,6 @@ Invalid transition trả `409 INVALID_STATE_TRANSITION`, không đổi dữ li�
 | API-016 | POST | `/doctors/{doctorId}/availability-overrides` | Tạo nghỉ/ca bổ sung | Own limited hoặc admin |
 | API-017 | GET | `/doctors/{doctorId}/availability` | Tính khoảng làm việc hiệu lực | Own/admin/internal |
 | API-018 | POST | `/doctors/{doctorId}/availability-overrides/{overrideId}/cancel` | Hủy ngoại lệ | Own creator hoặc admin |
-| API-019 | GET | `/internal/doctors/{doctorId}/eligibility` | Xác nhận khả năng nhận khám | Internal service only |
 
 ### Endpoint detail
 
@@ -515,7 +514,7 @@ Không cho xóa chuyên khoa primary cuối cùng của doctor `ACTIVE`; trả `
   "slotDurationMinutes": 30,
   "effectiveFrom": "2026-09-01",
   "effectiveTo": null,
-  "timezone": "Asia/Bangkok",
+  "timezone": "Asia/Ho_Chi_Minh",
   "departmentId": "uuid",
   "roomId": "uuid"
 }
@@ -589,7 +588,7 @@ Query bắt buộc: `from` và `to` dạng timestamp UTC, `from < to`, khoảng 
 {
   "data": {
     "doctorId": "uuid",
-    "timezone": "Asia/Bangkok",
+    "timezone": "Asia/Ho_Chi_Minh",
     "intervals": [
       {
         "startAt": "2026-09-07T01:00:00Z",
@@ -614,31 +613,14 @@ Query bắt buộc: `from` và `to` dạng timestamp UTC, `from < to`, khoảng 
 
 Request: `If-Match` và `{ "reason": "Entered by mistake" }`. Override đã kết thúc trả `409 AVAILABILITY_ALREADY_ENDED`. Thành công cập nhật state/version, audit và outbox.
 
-#### API-019 — `GET /internal/doctors/{doctorId}/eligibility`
+### Internal gRPC contract (target)
 
-- **Mục đích:** Cho Appointment Service xác nhận doctor có thể được chọn tại thời điểm đặt lịch; đây không phải thao tác giữ slot.
-- **Caller/Authorization:** Service identity của Appointment Service; không public route.
-- **Idempotency:** Safe.
-
-Query: `specialtyId: UUID`, `startAt: timestamp`, `endAt: timestamp`. Khoảng phải khớp ranh giới slot và không quá 24 giờ.
-
-**Success — `200 OK`**
-
-```json
-{
-  "data": {
-    "doctorId": "uuid",
-    "eligible": true,
-    "doctorStatus": "ACTIVE",
-    "specialtyMatched": true,
-    "withinWorkingAvailability": true,
-    "bookingOccupancyChecked": false,
-    "version": 7
-  }
-}
-```
-
-Doctor không tồn tại trả `404`; dependency/service unavailable trả `503`. Trường hợp tồn tại nhưng không phù hợp trả `200` với `eligible: false` và machine-readable `reasons`, không leak note/lý do nghỉ.
+- **Proto:** `docs/grpc/doctor/v1/doctor_internal.proto`.
+- `GetDoctorEligibility`: status, specialty/rank và working-availability verdict; không kiểm tra booking occupancy.
+- `ListEligibleDoctors`: candidate tối thiểu theo specialty/rank/time cho rank-based assignment.
+- `GetDoctorAvailability`: effective working intervals; Appointment tự trừ occupancy/SlotHold.
+- Auth: RS256 service JWT theo audience/scope; deadline/correlation metadata; không user JWT/shared secret.
+- HTTP `/internal/*` nếu còn trong source là compatibility route cần migration, không thuộc target OpenAPI.
 
 ### Error catalog chung
 
@@ -671,7 +653,7 @@ Không trả stack trace, Prisma/PostgreSQL error, token, internal host hoặc e
 | BR-003 | Doctor chỉ `ACTIVE` khi có profile hợp lệ và đúng một chuyên khoa primary đang active | Application + DB partial unique | `DOCTOR_PROFILE_INCOMPLETE` / `PRIMARY_SPECIALTY_REQUIRED` |
 | BR-004 | Patient chỉ thấy doctor `ACTIVE` và field public | Query policy + serializer allowlist | `DOCTOR_NOT_FOUND` |
 | BR-005 | Doctor chỉ sửa public profile của chính mình; license/status/specialty/schedule do Admin quản lý | Authorization + DTO allowlist | `FORBIDDEN` / `FIELD_NOT_ALLOWED` |
-| BR-006 | Schedule dùng ISO weekday, timezone `Asia/Bangkok`, interval `[startTime,endTime)` và không qua nửa đêm ở MVP | Application + DB check | `VALIDATION_FAILED` |
+| BR-006 | Schedule dùng ISO weekday, timezone `Asia/Ho_Chi_Minh`, interval `[startTime,endTime)` và không qua nửa đêm ở MVP | Application + DB check | `VALIDATION_FAILED` |
 | BR-007 | Hai schedule active của cùng doctor không được chồng thời gian khi day/effective date range giao nhau | Transaction lock + application | `SCHEDULE_OVERLAP` |
 | BR-008 | Độ dài ca phải chia hết cho `slotDurationMinutes` | Application | `SLOT_DURATION_NOT_DIVISIBLE` |
 | BR-009 | Doctor own chỉ tạo `UNAVAILABLE`; `EXTRA_AVAILABLE` yêu cầu Admin | Authorization | `FORBIDDEN` |
@@ -808,7 +790,7 @@ And không write, audit success hoặc event
 
 ```gherkin
 Given Doctor D ACTIVE và JWT sub ánh xạ D
-And D có lịch 08:00-11:30 ngày 2026-09-03 Asia/Bangkok
+And D có lịch 08:00-11:30 ngày 2026-09-03 Asia/Ho_Chi_Minh
 When D tạo UNAVAILABLE 08:00-11:30 cùng ngày với Idempotency-Key K
 Then API trả 201
 And override ACTIVE được lưu với timestamp UTC
@@ -920,7 +902,7 @@ And không tạo reservation hay write trong Doctor Service
 | EDGE-007 | Retry sau timeout | Dùng idempotency record để trả cùng resource | Same result |
 | EDGE-007A | Cùng Idempotency-Key, payload khác | Reject, không đổi dữ liệu | `409` |
 | EDGE-008 | `startAt == endAt` hoặc đúng boundary | Khoảng rỗng reject; end là exclusive | `400/422` |
-| EDGE-009 | UTC đi qua ngày địa phương | Convert bằng `Asia/Bangkok`; giữ đúng ISO weekday/business date | Deterministic intervals |
+| EDGE-009 | UTC đi qua ngày địa phương | Convert bằng `Asia/Ho_Chi_Minh`; giữ đúng ISO weekday/business date | Deterministic intervals |
 | EDGE-010 | Auth/Catalog bắt buộc down | Retry bounded rồi fail, không false write | `503` |
 | EDGE-011 | Event transport down sau core commit | Outbox pending/retry; core data giữ nguyên | `2xx` + alert |
 | EDGE-012 | DB commit nhưng response mất | Retry cùng key trả cùng resource | Same result |
@@ -999,7 +981,7 @@ Không đưa `note`, license number, accountId, fullName hoặc thông tin y t�
 - **Concurrency control:** DB unique constraints, transaction khóa doctor row cho overlap, optimistic `version` cho update.
 - **Partial failure recovery:** Transactional outbox + dispatcher retry; record vượt retry limit chuyển `FAILED` và được reconciliation job/admin xử lý.
 - **Reconciliation:** Appointment Service định kỳ có thể query doctor eligibility cho appointment tương lai chưa diễn ra; chi tiết job thuộc Appointment Service.
-- **Event transport:** Repo hiện chưa bật broker; phải chốt RabbitMQ hay transport khác trước Phase tích hợp. Domain/outbox contract không phụ thuộc broker cụ thể.
+- **Event transport:** RabbitMQ đã được APPROVED. Repo chưa bật broker; implementation relay transactional outbox với retry/DLQ.
 
 ---
 
@@ -1053,11 +1035,12 @@ Audit là append-only. Không cho API business sửa/xóa audit record.
 |---|---:|---|---:|---|
 | `PORT` | No | `5005` | No | Internal application port |
 | `DOCTOR_DATABASE_URL` | Yes | `postgresql://<user>:<password>@doctor-database:5432/doctor?schema=public` | Yes | DB riêng của Doctor Service |
-| `DOCTOR_TIMEZONE` | No | `Asia/Bangkok` | No | MVP chỉ chấp nhận timezone này |
+| `DOCTOR_TIMEZONE` | No | `Asia/Ho_Chi_Minh` | No | MVP chỉ chấp nhận timezone này |
 | `DOCTOR_MAX_AVAILABILITY_RANGE_DAYS` | No | `31` | No | Giới hạn query/override |
-| `AUTH_SERVICE_BASE_URL` | Yes | `http://auth-service:5003` | No | Docker DNS, không dùng localhost |
-| `CATALOG_SERVICE_BASE_URL` | Khi bật Catalog validation | `http://service-catalog-service:<internal-port>` | No | Internal base URL; dùng port do Catalog Service sở hữu |
-| `INTERNAL_SERVICE_AUTH_SECRET` | Tùy cơ chế được approve | `<secret>` | Yes | Không commit; thay bằng service JWT/mTLS nếu chốt |
+| `AUTH_GRPC_TARGET` | Khi validate account | `auth-service:<grpc-port>` | No | gRPC internal target |
+| `CATALOG_GRPC_TARGET` | Khi validate Catalog ref | `service-catalog-service:<grpc-port>` | No | gRPC internal target |
+| `INTERNAL_SERVICE_JWT_PRIVATE_KEY` | Có outbound gRPC | mounted secret | Yes | Không dùng user JWT/shared secret |
+| `INTERNAL_SERVICE_JWT_KEY_ID` | Có outbound gRPC | `internal-dev-key` | No | Rotation |
 | `OUTBOX_POLL_INTERVAL_MS` | No | `1000` | No | Chỉ dùng khi dispatcher được bật |
 | `LOG_LEVEL` | No | `info` | No | Không bật body logging ở production |
 
@@ -1066,7 +1049,7 @@ Audit là append-only. Không cho API business sửa/xóa audit record.
 - Public host port: dev-only `${DOCTOR_SERVICE_PORT:-5005}:5005`; production chỉ expose qua Gateway.
 - Migration: Prisma migration chạy riêng trước app startup; không dùng `db push` production.
 - Health: `GET /health` luôn đúng contract `{"status":"ok"}` khi ready.
-- Công nghệ mới: Không cần framework/ORM mới. Event broker chưa có trong repo và là decision gate, không tự ý thêm.
+- Công nghệ target: RabbitMQ đã được approve nhưng chưa có trong source/config; chỉ thêm khi triển khai integration theo spec, không đổi ORM/framework ngoài scope.
 
 ---
 
@@ -1184,7 +1167,7 @@ And update sau trả VERSION_CONFLICT mà không ghi đè
 ### Assumptions
 
 - Doctor Service dùng stack NestJS + Prisma + PostgreSQL giống Auth Service và nằm trong monorepo `services`.
-- Hệ thống MVP hoạt động tại Việt Nam và business timezone là `Asia/Bangkok` (UTC+07, không DST).
+- Hệ thống MVP hoạt động tại Việt Nam và business timezone là `Asia/Ho_Chi_Minh` (UTC+07, không DST).
 - Auth JWT tối thiểu có `sub` và `role`; Doctor Service tự enforce ownership.
 - `Specialty` thuộc Doctor Service theo tài liệu quy hoạch; Service Catalog chỉ tham chiếu `specialtyId`.
 - Appointment Service sở hữu booking occupancy và slot hold; Doctor Service chỉ sở hữu working availability.
@@ -1196,7 +1179,7 @@ And update sau trả VERSION_CONFLICT mà không ghi đè
 
 1. **Auth internal contract:** Auth Service hiện chưa có endpoint/service event để Admin xác minh account có role `DOCTOR`; cần chốt endpoint hoặc event projection trước API-002/API-006.
 2. **Service-to-service authentication:** cần chọn service JWT, mTLS hay cơ chế khác; không dùng một header tên service không được ký.
-3. **Event transport:** repo chưa bật broker. Cần approve RabbitMQ hoặc transport khác trước khi triển khai dispatcher; local outbox vẫn nên giữ.
+3. **Event transport:** RabbitMQ đã được approve; repo chưa bật broker. Khi triển khai phải có dispatcher từ local outbox, retry/DLQ và contract tests.
 4. **Appointment reconciliation:** cần chốt SLA và hành vi với lịch đã đặt khi doctor nghỉ/deactivate (đổi bác sĩ, đổi giờ hay hủy); nghiệp vụ này thuộc Appointment Service.
 5. **Catalog references:** MVP có cần `departmentId`/`roomId` trong DoctorSchedule ngay hay để `null` đến khi Catalog Service sẵn sàng?
 6. **Privacy của lịch nghỉ:** patient không thấy reason/note; cần xác nhận doctor khác có được xem hay chỉ owner/Admin.
