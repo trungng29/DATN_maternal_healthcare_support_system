@@ -428,20 +428,71 @@ export class PatientsService {
     }
   }
 
-  async getEligibility(patientId: string) {
+  async getEligibility(patientId: string, actorAccountId?: string) {
     this.uuid(patientId, 'INVALID_PATIENT_ID');
-    const exists = Boolean(
-      await this.db.patient.findUnique({
-        where: { id: patientId },
-        select: { id: true },
-      }),
-    );
+    const patient = await this.db.patient.findUnique({
+      where: { id: patientId },
+      select: { id: true, authAccountId: true, version: true },
+    });
     return {
       patientId,
-      exists,
-      profileStatus: exists ? ('COMPLETE' as const) : null,
-      eligibleForBooking: exists,
+      exists: Boolean(patient),
+      active: Boolean(patient),
+      profileComplete: Boolean(patient),
+      profileStatus: patient ? ('COMPLETE' as const) : null,
+      eligibleForBooking: Boolean(patient),
       missingFields: [],
+      profileVersion: patient?.version ?? 0,
+      callerOwnsPatient: Boolean(
+        actorAccountId && patient?.authAccountId === actorAccountId,
+      ),
+    };
+  }
+
+  async getInternalIdentity(patientId: string, _purpose: string) {
+    this.uuid(patientId, 'INVALID_PATIENT_ID');
+    const patient = await this.db.patient.findUnique({
+      where: { id: patientId },
+      select: { id: true, fullName: true, dateOfBirth: true, phoneNumber: true, nationalIdCiphertext: true, version: true },
+    });
+    if (!patient) this.notFound();
+    const maskedId = this.crypto.maskCiphertext(patient.nationalIdCiphertext);
+    return {
+      patientId: patient.id,
+      fullName: patient.fullName,
+      dateOfBirth: { seconds: Math.floor(patient.dateOfBirth.getTime() / 1000).toString(), nanos: 0 },
+      maskedPhone: '*'.repeat(Math.max(0, patient.phoneNumber.length - 4)) + patient.phoneNumber.slice(-4),
+      nationalIdLast4: maskedId?.slice(-4) ?? '',
+      active: true,
+      profileVersion: patient.version,
+    };
+  }
+
+  async searchInternal(phone?: string, pageSize = 20, pageToken?: string) {
+    const take = Math.min(Math.max(Number(pageSize) || 20, 1), 50);
+    const rows = await this.db.patient.findMany({
+      where: phone ? { phoneNumber: normalizePhone(phone) } : {},
+      orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+      take: take + 1,
+      ...(pageToken ? { cursor: { id: pageToken }, skip: 1 } : {}),
+      select: { id: true, fullName: true, dateOfBirth: true, phoneNumber: true, nationalIdCiphertext: true, version: true },
+    });
+    const hasNext = rows.length > take;
+    const items = rows.slice(0, take);
+    return {
+      patients: items.map((patient) => {
+        const maskedId = this.crypto.maskCiphertext(patient.nationalIdCiphertext);
+        return {
+          patientId: patient.id,
+          fullName: patient.fullName,
+          dateOfBirth: { seconds: Math.floor(patient.dateOfBirth.getTime() / 1000).toString(), nanos: 0 },
+          maskedPhone: '*'.repeat(Math.max(0, patient.phoneNumber.length - 4)) + patient.phoneNumber.slice(-4),
+          nationalIdLast4: maskedId?.slice(-4) ?? '',
+          active: true,
+          profileVersion: patient.version,
+        };
+      }),
+      page: { nextPageToken: hasNext ? items[items.length - 1]?.id ?? '' : '', totalSize: '0' },
     };
   }
 

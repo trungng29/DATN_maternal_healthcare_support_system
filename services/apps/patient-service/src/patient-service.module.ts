@@ -8,6 +8,8 @@ import { PatientDatabaseModule } from './database/patient-database.module';
 import { PatientServiceController } from './patient-service.controller';
 import { PatientServiceService } from './patient-service.service';
 import { PatientsModule } from './patients/patients.module';
+import { PlatformModule } from '@platform';
+import { PatientGrpcController } from './grpc/patient-grpc.controller';
 
 @Module({
   imports: [
@@ -15,8 +17,9 @@ import { PatientsModule } from './patients/patients.module';
     AuthModule,
     PatientDatabaseModule,
     PatientsModule,
+    PlatformModule,
   ],
-  controllers: [PatientServiceController],
+  controllers: [PatientServiceController, PatientGrpcController],
   providers: [PatientServiceService],
 })
 export class PatientServiceModule implements NestModule {

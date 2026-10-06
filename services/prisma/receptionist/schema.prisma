@@ -58,11 +58,13 @@ enum AdmissionStatus {
 
 enum AdmissionStep {
   VALIDATE_APPOINTMENT
-  CREATE_INVOICE
-  VERIFY_PAYMENT
-  OPEN_MEDICAL_RECORD
+  VERIFY_PATIENT_IDENTITY
+  OPEN_RECEPTION_CASE
+  CREATE_OR_GET_BASE_INVOICE
+  VERIFY_PAYMENT_OR_APPROVED_CREDIT
+  OPEN_CLINICAL_ENCOUNTER_DRAFT
   CHECK_IN_APPOINTMENT
-  CREATE_QUEUE_TICKET
+  CREATE_AUTHORITATIVE_QUEUE_TICKET
   DONE
 }
 
@@ -102,19 +104,19 @@ model ReceptionistProfile {
 // The Admission tables are reserved by the approved data model. No Admission
 // HTTP routes are registered until all downstream contracts pass the release gate.
 model ReceptionCase {
-  id                       String                @id @default(uuid()) @db.Uuid
-  type                     ReceptionCaseType     @default(SCHEDULED)
-  appointmentId            String?               @map("appointment_id") @db.Uuid
-  patientId                String                @map("patient_id") @db.Uuid
-  status                   ReceptionCaseStatus   @default(OPEN)
-  arrivalAt                DateTime              @map("arrival_at") @db.Timestamptz(6)
-  scheduledStartAtSnapshot DateTime?             @map("scheduled_start_at_snapshot") @db.Timestamptz(6)
-  appointmentTypeSnapshot  String?               @map("appointment_type_snapshot") @db.VarChar(50)
-  openedByAccountId        String                @map("opened_by_account_id") @db.Uuid
-  lastHandledByAccountId   String                @map("last_handled_by_account_id") @db.Uuid
-  version                  Int                   @default(1)
-  createdAt                DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                       String              @id @default(uuid()) @db.Uuid
+  type                     ReceptionCaseType   @default(SCHEDULED)
+  appointmentId            String?             @map("appointment_id") @db.Uuid
+  patientId                String              @map("patient_id") @db.Uuid
+  status                   ReceptionCaseStatus @default(OPEN)
+  arrivalAt                DateTime            @map("arrival_at") @db.Timestamptz(6)
+  scheduledStartAtSnapshot DateTime?           @map("scheduled_start_at_snapshot") @db.Timestamptz(6)
+  appointmentTypeSnapshot  String?             @map("appointment_type_snapshot") @db.VarChar(50)
+  openedByAccountId        String              @map("opened_by_account_id") @db.Uuid
+  lastHandledByAccountId   String              @map("last_handled_by_account_id") @db.Uuid
+  version                  Int                 @default(1)
+  createdAt                DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   identityVerifications IdentityVerification[]
   admission             Admission?
@@ -148,7 +150,9 @@ model Admission {
   invoiceId              String?         @map("invoice_id") @db.Uuid
   paymentId              String?         @map("payment_id") @db.Uuid
   medicalRecordId        String?         @map("medical_record_id") @db.Uuid
+  encounterId            String?         @map("encounter_id") @db.Uuid
   queueTicketId          String?         @map("queue_ticket_id") @db.Uuid
+  queueJourneyId         String?         @map("queue_journey_id") @db.Uuid
   appointmentCheckedInAt DateTime?       @map("appointment_checked_in_at") @db.Timestamptz(6)
   lastErrorCode          String?         @map("last_error_code") @db.VarChar(100)
   retryCount             Int             @default(0) @map("retry_count")
@@ -157,8 +161,8 @@ model Admission {
   updatedAt              DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
   completedAt            DateTime?       @map("completed_at") @db.Timestamptz(6)
 
-  receptionCase ReceptionCase           @relation(fields: [receptionCaseId], references: [id], onDelete: Restrict)
-  history      AdmissionStatusHistory[]
+  receptionCase ReceptionCase            @relation(fields: [receptionCaseId], references: [id], onDelete: Restrict)
+  history       AdmissionStatusHistory[]
 
   @@index([status, currentStep, updatedAt])
   @@map("admissions")

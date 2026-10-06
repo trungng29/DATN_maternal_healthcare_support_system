@@ -6,6 +6,8 @@ import { RequestIdMiddleware } from './common/request-id.middleware';
 import { CatalogDatabaseModule } from './database/catalog-database.module';
 import { ServiceCatalogController } from './service-catalog.controller';
 import { ServiceCatalogService } from './service-catalog.service';
+import { PlatformModule } from '@platform';
+import { CatalogGrpcController } from './grpc/catalog-grpc.controller';
 
 @Module({
   imports: [
@@ -13,8 +15,9 @@ import { ServiceCatalogService } from './service-catalog.service';
     AuthModule,
     CatalogDatabaseModule,
     CatalogModule,
+    PlatformModule,
   ],
-  controllers: [ServiceCatalogController],
+  controllers: [ServiceCatalogController, CatalogGrpcController],
   providers: [ServiceCatalogService],
 })
 export class ServiceCatalogModule implements NestModule {

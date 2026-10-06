@@ -268,6 +268,8 @@ export class DoctorController {
       req.requestId,
     );
   }
+  // Deprecated compatibility endpoint. It is intentionally not routed by Kong.
+  // New callers must use DoctorInternalService gRPC.
   @Get('internal/doctors/:doctorId/eligibility')
   eligibility(
     @Param('doctorId', ParseUUIDPipe) id: string,

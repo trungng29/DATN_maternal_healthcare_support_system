@@ -21,7 +21,10 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
-    "paths": {},
+    "paths": {
+      "@platform": ["libs/platform/src/index.ts"],
+      "@platform/*": ["libs/platform/src/*"]
+    },
     "baseUrl": "./"
   }
 }

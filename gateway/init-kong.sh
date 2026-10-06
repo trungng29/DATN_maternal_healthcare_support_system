@@ -21,7 +21,7 @@ _format_version: "3.0"
 consumers:
   - username: maternal-healthcare-auth
     jwt_secrets:
-      - key: "${AUTH_JWT_KEY_ID:-local-dev-key}"
+      - key: "${AUTH_JWT_ISSUER:-maternal-healthcare-auth}"
         algorithm: RS256
         secret: not-used-for-rs256
         rsa_public_key: |-
@@ -33,7 +33,7 @@ kong config parse /tmp/kong-jwt.yml >/dev/null
 # db_import is additive and rejects a repeated unique JWT key. Export first so
 # rerunning Compose against an existing Kong volume remains idempotent.
 kong config db_export /tmp/kong-current.yml >/dev/null
-JWT_KEY="${AUTH_JWT_KEY_ID:-local-dev-key}"
+JWT_KEY="${AUTH_JWT_ISSUER:-maternal-healthcare-auth}"
 if ! grep -Fq "key: $JWT_KEY" /tmp/kong-current.yml; then
   kong config db_import /tmp/kong-jwt.yml
 fi

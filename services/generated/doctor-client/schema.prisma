@@ -14,6 +14,17 @@ enum DoctorStatus {
   INACTIVE
 }
 
+enum DoctorConsultationRank {
+  BASIC
+  SPECIALIST_I
+  SPECIALIST_II
+  MASTER
+  ASSOC_PROFESSOR
+  PROFESSOR
+  EXPERT
+  HEAD_DOCTOR
+}
+
 enum SpecialtyStatus {
   ACTIVE
   INACTIVE
@@ -44,21 +55,23 @@ enum AvailabilityReasonCode {
 }
 
 model Doctor {
-  id             String               @id @default(uuid()) @db.Uuid
-  accountId      String               @unique @map("account_id") @db.Uuid
-  licenseNumber  String               @unique @map("license_number") @db.VarChar(50)
-  status         DoctorStatus         @default(DRAFT)
-  version        Int                  @default(1)
-  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
-  profile        DoctorProfile?
-  specialties    DoctorSpecialty[]
-  schedules      DoctorSchedule[]
-  availabilities DoctorAvailability[]
-  idempotencies  IdempotencyRecord[]
-  audits         AuditRecord[]
-  outboxEvents   OutboxEvent[]
+  id               String                 @id @default(uuid()) @db.Uuid
+  accountId        String                 @unique @map("account_id") @db.Uuid
+  licenseNumber    String                 @unique @map("license_number") @db.VarChar(50)
+  consultationRank DoctorConsultationRank @default(BASIC) @map("consultation_rank")
+  status           DoctorStatus           @default(DRAFT)
+  version          Int                    @default(1)
+  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  profile          DoctorProfile?
+  specialties      DoctorSpecialty[]
+  schedules        DoctorSchedule[]
+  availabilities   DoctorAvailability[]
+  idempotencies    IdempotencyRecord[]
+  audits           AuditRecord[]
+  outboxEvents     OutboxEvent[]
 
+  @@index([status, consultationRank], map: "doctors_status_consultation_rank_idx")
   @@map("doctors")
 }
 
@@ -112,7 +125,7 @@ model DoctorSchedule {
   slotDurationMinutes Int            @default(30) @map("slot_duration_minutes")
   effectiveFrom       DateTime       @map("effective_from") @db.Date
   effectiveTo         DateTime?      @map("effective_to") @db.Date
-  timezone            String         @default("Asia/Bangkok") @db.VarChar(64)
+  timezone            String         @default("Asia/Ho_Chi_Minh") @db.VarChar(64)
   departmentId        String?        @map("department_id") @db.Uuid
   roomId              String?        @map("room_id") @db.Uuid
   status              ScheduleStatus @default(ACTIVE)

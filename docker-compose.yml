@@ -59,6 +59,7 @@ services:
       KONG_PG_PASSWORD: "${KONG_PG_PASSWORD:-kongpass}"
       AUTH_JWT_PUBLIC_KEY: "${AUTH_JWT_PUBLIC_KEY:-}"
       AUTH_JWT_KEY_ID: "${AUTH_JWT_KEY_ID:-local-dev-key}"
+      AUTH_JWT_ISSUER: "${AUTH_JWT_ISSUER:-maternal-healthcare-auth}"
     depends_on:
       kong-database: { condition: service_healthy }
     networks: [app-network]

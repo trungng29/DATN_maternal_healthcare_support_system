@@ -6,6 +6,8 @@ import { DoctorServiceController } from './doctor-service.controller';
 import { DoctorServiceService } from './doctor-service.service';
 import { RequestIdMiddleware } from './common/request-id.middleware';
 import { DoctorsModule } from './doctors/doctors.module';
+import { PlatformModule } from '@platform';
+import { DoctorGrpcController } from './grpc/doctor-grpc.controller';
 
 @Module({
   imports: [
@@ -13,8 +15,9 @@ import { DoctorsModule } from './doctors/doctors.module';
     DatabaseModule,
     DoctorAuthModule,
     DoctorsModule,
+    PlatformModule,
   ],
-  controllers: [DoctorServiceController],
+  controllers: [DoctorServiceController, DoctorGrpcController],
   providers: [DoctorServiceService],
 })
 export class DoctorServiceModule implements NestModule {

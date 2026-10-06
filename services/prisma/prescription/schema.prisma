@@ -1,0 +1,59 @@
+generator client {
+ provider="prisma-client-js"
+ output="../../generated/prescription-client"
+}
+datasource db {
+ provider="postgresql"
+ url=env("PRESCRIPTION_DATABASE_URL")
+}
+enum PrescriptionStatus {
+  DRAFT
+  ISSUED
+  CANCELLED
+}
+model Prescription {
+  id String @id @default(uuid()) @db.Uuid
+  encounterId String @map("encounter_id") @db.Uuid
+  patientId String @map("patient_id") @db.Uuid
+  pregnancyEpisodeId String? @map("pregnancy_episode_id") @db.Uuid
+  prescribingDoctorId String @map("prescribing_doctor_id") @db.Uuid
+  status PrescriptionStatus @default(DRAFT)
+  supersedesPrescriptionId String? @map("supersedes_prescription_id") @db.Uuid
+  version Int @default(1)
+  issuedAt DateTime? @map("issued_at") @db.Timestamptz(6)
+  cancelledAt DateTime? @map("cancelled_at") @db.Timestamptz(6)
+  cancelReason String? @map("cancel_reason") @db.VarChar(500)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  items PrescriptionItem[]
+  @@index([encounterId,status])
+  @@index([patientId,createdAt])
+  @@map("prescriptions")
+}
+model PrescriptionItem {
+  id String @id @default(uuid()) @db.Uuid
+  prescriptionId String @map("prescription_id") @db.Uuid
+  medicationCode String? @map("medication_code") @db.VarChar(100)
+  medicationName String @map("medication_name") @db.VarChar(200)
+  strength String? @db.VarChar(100)
+  dosageForm String? @map("dosage_form") @db.VarChar(100)
+  route String @db.VarChar(80)
+  dose String @db.VarChar(80)
+  frequency String @db.VarChar(120)
+  durationDays Int? @map("duration_days")
+  instruction String @db.VarChar(1000)
+  sortOrder Int @default(0) @map("sort_order")
+  prescription Prescription @relation(fields:[prescriptionId],references:[id],onDelete:Cascade)
+  @@index([prescriptionId,sortOrder])
+  @@map("prescription_items")
+}
+model PrescriptionOutbox {
+  id String @id @default(uuid()) @db.Uuid
+  eventType String @map("event_type") @db.VarChar(120)
+  aggregateId String @map("aggregate_id") @db.Uuid
+  payload Json
+  status String @default("PENDING") @db.VarChar(20)
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  @@index([status,occurredAt])
+  @@map("prescription_outbox")
+}

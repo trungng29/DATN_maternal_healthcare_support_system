@@ -11,6 +11,7 @@ import { DatabaseModule } from './database/database.module';
 import { ReceptionistsModule } from './receptionists/receptionists.module';
 import { ReceptionistServiceController } from './receptionist-service.controller';
 import { ReceptionistServiceService } from './receptionist-service.service';
+import { AdmissionModule } from './admission/admission.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ReceptionistServiceService } from './receptionist-service.service';
     DatabaseModule,
     AuthModule,
     ReceptionistsModule,
+    AdmissionModule,
   ],
   controllers: [ReceptionistServiceController],
   providers: [ReceptionistServiceService, RequestIdMiddleware],

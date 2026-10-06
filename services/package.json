@@ -43,14 +43,43 @@
     "start:catalog": "nest start service-catalog-service",
     "start:catalog:dev": "nest start service-catalog-service --watch",
     "prisma:generate:catalog": "prisma generate --schema prisma/catalog/schema.prisma",
-    "prisma:migrate:catalog": "prisma migrate deploy --schema prisma/catalog/schema.prisma"
+    "prisma:migrate:catalog": "prisma migrate deploy --schema prisma/catalog/schema.prisma",
+    "start:appointment": "nest start appointment-service",
+    "start:appointment:dev": "nest start appointment-service --watch",
+    "start:billing": "nest start billing-service",
+    "start:billing:dev": "nest start billing-service --watch",
+    "prisma:generate:appointment": "prisma generate --schema prisma/appointment/schema.prisma",
+    "prisma:generate:billing": "prisma generate --schema prisma/billing/schema.prisma",
+    "prisma:migrate:appointment": "prisma migrate deploy --schema prisma/appointment/schema.prisma",
+    "prisma:migrate:billing": "prisma migrate deploy --schema prisma/billing/schema.prisma",
+    "start:medical-record": "nest start medical-record-service",
+    "start:medical-record:dev": "nest start medical-record-service --watch",
+    "prisma:generate:medical-record": "prisma generate --schema prisma/medical-record/schema.prisma",
+    "prisma:migrate:medical-record": "prisma migrate deploy --schema prisma/medical-record/schema.prisma",
+    "start:queue": "nest start queue-service",
+    "start:queue:dev": "nest start queue-service --watch",
+    "prisma:generate:queue": "prisma generate --schema prisma/queue/schema.prisma",
+    "prisma:migrate:queue": "prisma migrate deploy --schema prisma/queue/schema.prisma",
+    "start:document": "nest start document-service",
+    "prisma:generate:document": "prisma generate --schema prisma/document/schema.prisma",
+    "prisma:migrate:document": "prisma migrate deploy --schema prisma/document/schema.prisma",
+    "start:prescription": "nest start prescription-service",
+    "prisma:generate:prescription": "prisma generate --schema prisma/prescription/schema.prisma",
+    "prisma:migrate:prescription": "prisma migrate deploy --schema prisma/prescription/schema.prisma",
+    "start:treatment-plan": "nest start treatment-plan-service",
+    "prisma:generate:treatment-plan": "prisma generate --schema prisma/treatment-plan/schema.prisma",
+    "prisma:migrate:treatment-plan": "prisma migrate deploy --schema prisma/treatment-plan/schema.prisma"
   },
   "dependencies": {
+    "@grpc/grpc-js": "^1.14.5",
+    "@grpc/proto-loader": "^0.8.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",
+    "@nestjs/microservices": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
     "@prisma/client": "^6.16.2",
+    "amqplib": "^2.2.0",
     "argon2": "^0.45.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
@@ -65,6 +94,7 @@
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
+    "@types/amqplib": "^0.10.8",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/jsonwebtoken": "^9.0.10",
@@ -108,7 +138,12 @@
     "coverageDirectory": "./coverage",
     "testEnvironment": "node",
     "roots": [
-      "<rootDir>/apps/"
-    ]
+      "<rootDir>/apps/",
+      "<rootDir>/libs/"
+    ],
+    "moduleNameMapper": {
+      "^@platform$": "<rootDir>/libs/platform/src/index.ts",
+      "^@platform/(.*)$": "<rootDir>/libs/platform/src/$1"
+    }
   }
 }

@@ -124,6 +124,7 @@ exports.Prisma.DoctorScalarFieldEnum = {
   id: 'id',
   accountId: 'accountId',
   licenseNumber: 'licenseNumber',
+  consultationRank: 'consultationRank',
   status: 'status',
   version: 'version',
   createdAt: 'createdAt',
@@ -257,6 +258,17 @@ exports.Prisma.JsonNullValueFilter = {
   JsonNull: Prisma.JsonNull,
   AnyNull: Prisma.AnyNull
 };
+exports.DoctorConsultationRank = exports.$Enums.DoctorConsultationRank = {
+  BASIC: 'BASIC',
+  SPECIALIST_I: 'SPECIALIST_I',
+  SPECIALIST_II: 'SPECIALIST_II',
+  MASTER: 'MASTER',
+  ASSOC_PROFESSOR: 'ASSOC_PROFESSOR',
+  PROFESSOR: 'PROFESSOR',
+  EXPERT: 'EXPERT',
+  HEAD_DOCTOR: 'HEAD_DOCTOR'
+};
+
 exports.DoctorStatus = exports.$Enums.DoctorStatus = {
   DRAFT: 'DRAFT',
   ACTIVE: 'ACTIVE',

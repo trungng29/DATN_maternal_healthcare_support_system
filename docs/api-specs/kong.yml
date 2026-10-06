@@ -9,29 +9,21 @@ services:
         paths: [/auth/forgot-password]
         methods: [POST]
         strip_path: false
-        plugins:
-          - name: rate-limiting
-            config:
-              minute: 5
-              policy: local
+        plugins: [{ name: rate-limiting, config: { minute: 5, policy: local } }]
       - name: auth-reset-password-route
         paths: [/auth/reset-password]
         methods: [POST]
         strip_path: false
-        plugins:
-          - name: rate-limiting
-            config:
-              minute: 10
-              policy: local
+        plugins: [{ name: rate-limiting, config: { minute: 10, policy: local } }]
       - name: auth-change-password-route
         paths: [/auth/change-password]
         methods: [POST]
         strip_path: false
         plugins:
+          - name: jwt
+            config: { claims_to_verify: [exp], key_claim_name: iss, run_on_preflight: false }
           - name: rate-limiting
-            config:
-              minute: 10
-              policy: local
+            config: { minute: 10, policy: local }
       - name: auth-service-route
         paths: [/auth]
         strip_path: false
@@ -43,57 +35,88 @@ services:
         strip_path: false
 
   - name: doctor-service
-    url: http://doctor-service:5005
-    routes:
-      - name: doctor-service-route
-        paths: [/api/doctors]
-        strip_path: true
+    url: http://doctor-service:5005/doctors
+    routes: [{ name: doctor-service-route, paths: [/api/doctors], strip_path: true }]
+    plugins:
+      - name: jwt
+        config: { claims_to_verify: [exp], key_claim_name: iss, run_on_preflight: false }
 
-  - name: receptionist-service
+  - name: receptionist-profile-service
     url: http://receptionist-service:5006/receptionists
     routes:
-      - name: receptionist-operations-route
-        paths: [/api/receptionists]
-        strip_path: true
+      - { name: receptionist-profile-route, paths: [/api/receptionists], strip_path: true }
+    plugins:
+      - name: jwt
+        config: { claims_to_verify: [exp], key_claim_name: iss, run_on_preflight: false }
+
+  - name: reception-admission-service
+    url: http://receptionist-service:5006/reception
+    routes:
+      - { name: reception-admission-route, paths: [/api/reception], strip_path: true }
+    plugins:
+      - name: jwt
+        config: { claims_to_verify: [exp], key_claim_name: iss, run_on_preflight: false }
 
   - name: patient-service
     url: http://patient-service:5004/patients
-    routes:
-      - name: patient-service-route
-        paths: [/api/patients]
-        strip_path: true
+    routes: [{ name: patient-service-route, paths: [/api/patients], strip_path: true }]
     plugins:
       - name: jwt
-        config:
-          claims_to_verify: [exp]
-          key_claim_name: kid
-          run_on_preflight: false
+        config: { claims_to_verify: [exp], key_claim_name: iss, run_on_preflight: false }
       - name: rate-limiting
-        config:
-          minute: 120
-          policy: local
-
+        config: { minute: 120, policy: local }
 
   - name: service-catalog-service
     url: http://service-catalog-service:5007
-    routes:
-      - name: service-catalog-service-route
-        paths: [/api/catalog]
-        strip_path: true
+    routes: [{ name: service-catalog-service-route, paths: [/api/catalog], strip_path: true }]
+
+  - name: appointment-service
+    url: http://appointment-service:5008
+    routes: [{ name: appointment-service-route, paths: [/api/appointment], strip_path: true }]
+    plugins:
+      - name: jwt
+        config: { claims_to_verify: [exp], key_claim_name: iss, run_on_preflight: false }
+      - name: rate-limiting
+        config: { minute: 120, policy: local }
+
+  - name: billing-service
+    url: http://billing-service:5009
+    routes: [{ name: billing-service-route, paths: [/api/billing], strip_path: true }]
+    plugins:
+      - name: jwt
+        config: { claims_to_verify: [exp], key_claim_name: iss, run_on_preflight: false }
+
+  - name: medical-record-service
+    url: http://medical-record-service:5011
+    routes: [{ name: medical-record-service-route, paths: [/api/medical-records], strip_path: true }]
+    plugins:
+      - name: jwt
+        config: { claims_to_verify: [exp], key_claim_name: iss, run_on_preflight: false }
+
+  - name: queue-service
+    url: http://queue-service:5012
+    routes: [{ name: queue-service-route, paths: [/api/queue], strip_path: true }]
+    plugins:
+      - name: jwt
+        config: { claims_to_verify: [exp], key_claim_name: iss, run_on_preflight: false }
+
+  - name: consultation-service
+    url: http://consultation-service:5019/consultations
+    routes: [{ name: consultation-service-route, paths: [/api/consultations], strip_path: true }]
+    plugins:
+      - name: jwt
+        config: { claims_to_verify: [exp], key_claim_name: iss, run_on_preflight: false }
 
   - name: sample-service
     url: http://sample-service:5000
-    routes:
-      - name: sample-service-route
-        paths: [/api/sample-service]
-        strip_path: true
+    routes: [{ name: sample-service-route, paths: [/api/sample-service], strip_path: true }]
 
 plugins:
   - name: cors
     config:
       origins: [http://localhost:3000]
       methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
-      headers: [Accept, Authorization, Content-Type, Idempotency-Key, X-Request-Id]
+      headers: [Accept, Authorization, Content-Type, Idempotency-Key, X-Request-Id, If-Match]
       exposed_headers: [X-Request-Id]
       credentials: true
       max_age: 3600

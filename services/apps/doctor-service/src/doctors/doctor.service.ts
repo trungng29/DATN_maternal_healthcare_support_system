@@ -1,6 +1,8 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from '../database/prisma.service';
+import { GrpcClientFactory } from '@platform';
+import { ConfigService } from '@nestjs/config';
 import {
   AvailabilityReasonCode,
   AvailabilityStatus,
@@ -41,7 +43,11 @@ type AnyRecord = Record<string, any>;
 
 @Injectable()
 export class DoctorDomainService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly grpc: GrpcClientFactory,
+    private readonly config: ConfigService,
+  ) {}
 
   async health() {
     await this.prisma.$queryRaw`SELECT 1`;
@@ -756,7 +762,7 @@ export class DoctorDomainService {
     return {
       data: {
         doctorId,
-        timezone: 'Asia/Bangkok',
+        timezone: 'Asia/Ho_Chi_Minh',
         intervals: result,
         generatedAt: new Date(),
         bookingOccupancyApplied: false,
@@ -854,22 +860,100 @@ export class DoctorDomainService {
     };
   }
 
-  private async verifyAccount(accountId: string) {
-    const endpoint = process.env.AUTH_ACCOUNT_LOOKUP_URL;
-    if (!endpoint) this.fail(503, 'DEPENDENCY_UNAVAILABLE');
-    try {
-      const secret = process.env.INTERNAL_SERVICE_AUTH_SECRET;
-      if (!secret) this.fail(503, 'DEPENDENCY_UNAVAILABLE');
-      const response = await fetch(
-        `${endpoint.replace(/\/$/, '')}/${accountId}`,
-        {
-          headers: { 'x-internal-service-secret': secret },
-          signal: AbortSignal.timeout(1000),
+  async getInternalEligibility(doctorId: string, requiredSpecialtyId?: string) {
+    const doctor = await this.prisma.doctor.findUnique({
+      where: { id: doctorId },
+      include: PUBLIC_INCLUDE,
+    });
+    if (!doctor) this.notFound();
+    const specialtyIds = doctor.specialties
+      .filter((item) => item.specialty.status === SpecialtyStatus.ACTIVE)
+      .map((item) => item.specialtyId);
+    return {
+      doctorId: doctor.id,
+      status: 'DOCTOR_OPERATIONAL_STATUS_' + doctor.status,
+      displayName: doctor.profile?.fullName ?? '',
+      specialtyIds,
+      consultationRankCode: doctor.consultationRank,
+      profileVersion: String(doctor.version),
+      availabilityVersion: String(doctor.version),
+      eligible:
+        doctor.status === DoctorStatus.ACTIVE &&
+        (!requiredSpecialtyId || specialtyIds.includes(requiredSpecialtyId)),
+    };
+  }
+
+  async listInternalEligibleDoctors(
+    specialtyId: string,
+    consultationRankCode: string | undefined,
+    intervalStart: Date | undefined,
+    intervalEnd: Date | undefined,
+    limit: number,
+  ) {
+    const rank = consultationRankCode
+      ? (consultationRankCode as any)
+      : undefined;
+    const doctors = await this.prisma.doctor.findMany({
+      where: {
+        status: DoctorStatus.ACTIVE,
+        ...(rank ? { consultationRank: rank } : {}),
+        specialties: {
+          some: {
+            specialtyId,
+            specialty: { status: SpecialtyStatus.ACTIVE },
+          },
         },
+      },
+      include: PUBLIC_INCLUDE,
+      orderBy: { id: 'asc' },
+      take: Math.min(Math.max(limit, 1), 100),
+    });
+    const result: any[] = [];
+    for (const doctor of doctors) {
+      if (intervalStart && intervalEnd) {
+        const availability = await this.getInternalAvailability(
+          doctor.id,
+          intervalStart,
+          intervalEnd,
+        );
+        const covers = availability.intervals.some(
+          (item: any) => item.startAt <= intervalStart && item.endAt >= intervalEnd,
+        );
+        if (!covers) continue;
+      }
+      result.push(await this.getInternalEligibility(doctor.id, specialtyId));
+    }
+    return result;
+  }
+
+  async getInternalAvailability(doctorId: string, from: Date, to: Date) {
+    const doctor = await this.prisma.doctor.findUnique({ where: { id: doctorId } });
+    if (!doctor) this.notFound();
+    const response = await this.listAvailability(
+      doctorId,
+      { from: from.toISOString(), to: to.toISOString() },
+      { userId: '', role: 'ADMIN' },
+    );
+    return { intervals: response.data.intervals, version: doctor.version };
+  }
+
+  private async verifyAccount(accountId: string) {
+    try {
+      const client = this.grpc.client({
+        key: 'auth',
+        target: this.config.get<string>('AUTH_GRPC_TARGET') ?? 'auth-service:6003',
+        proto: 'auth/v1/auth_internal.proto',
+        package: 'maternal.auth.v1',
+        service: 'AuthInternalService',
+      });
+      const context = { requestId: randomUUID(), correlationId: randomUUID(), actorRole: 'ADMIN' };
+      const response = await this.grpc.unary<any, any>(
+        client, 'getAccountAuthorization', { context, accountId },
+        this.grpc.metadata('auth-service', ['auth:account:read'], context), 1500,
       );
-      if (!response.ok) this.fail(422, 'ACCOUNT_NOT_DOCTOR');
-      const data = (await response.json()) as AnyRecord;
-      if (data.status !== 'ACTIVE' || data.role !== 'DOCTOR')
+      const account = response.account;
+      const roles = account?.roles ?? [];
+      if (account?.status !== 'ACCOUNT_STATUS_ACTIVE' || !roles.includes('DOCTOR'))
         this.fail(422, 'ACCOUNT_NOT_DOCTOR');
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -944,14 +1028,14 @@ export class DoctorDomainService {
       slotDurationMinutes: dto.slotDurationMinutes ?? 30,
       effectiveFrom: new Date(dto.effectiveFrom),
       effectiveTo: dto.effectiveTo ? new Date(dto.effectiveTo) : null,
-      timezone: dto.timezone ?? 'Asia/Bangkok',
+      timezone: dto.timezone ?? 'Asia/Ho_Chi_Minh',
       departmentId: dto.departmentId,
       roomId: dto.roomId,
     };
   }
   private validateSchedule(v: AnyRecord) {
     if (
-      v.timezone !== 'Asia/Bangkok' ||
+      v.timezone !== 'Asia/Ho_Chi_Minh' ||
       !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(v.startTime) ||
       !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(v.endTime) ||
       v.startTime >= v.endTime
@@ -1050,6 +1134,7 @@ export class DoctorDomainService {
     return {
       id: x.id,
       status: x.status,
+      consultationRank: x.consultationRank,
       profile: x.profile,
       specialties:
         x.specialties
