@@ -35,6 +35,7 @@ export class MedicalGrpcController {
   }
   @GrpcMethod('MedicalRecordInternalService', 'ValidateEncounterAccess')
   @ServiceCallers(
+    'billing-service',
     'document-service',
     'prescription-service',
     'treatment-plan-service',

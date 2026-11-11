@@ -37,6 +37,7 @@ import {
   deleteServiceOrder,
   removeServiceOrderCharge,
   updateServiceOrderResult,
+  verifyServiceOrderResult,
 } from '../../../services/clinical';
 import { listReceptionInvoices } from '../../../services/operations';
 import { toInvoice, type DeskInvoice } from '../../../services/receptionDesk';
@@ -80,6 +81,10 @@ export function DoctorClinicalServiceOrders({
 }: DoctorClinicalServiceOrdersProps) {
   const { stream } = useAuthSession();
   const canEdit = encounterState === 'IN_PROGRESS';
+  const [linkedAppointmentId, setLinkedAppointmentId] = useState(
+    appointmentId,
+  );
+  const activeAppointmentId = linkedAppointmentId || appointmentId;
 
   const [allServices, setAllServices] = useState<CatalogService[]>([]);
   const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
@@ -101,6 +106,7 @@ export function DoctorClinicalServiceOrders({
 
   // Upload file kết quả cho từng order
   const [uploadingOrderId, setUploadingOrderId] = useState<string | null>(null);
+  const [verifyingOrderId, setVerifyingOrderId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const targetUploadOrderRef = useRef<any | null>(null);
 
@@ -139,36 +145,66 @@ export function DoctorClinicalServiceOrders({
 
   // Tải danh sách chỉ định của ca khám hiện tại
   const fetchOrders = async () => {
-    if (!encounterId) return;
+    if (!encounterId) return [];
     setOrdersLoading(true);
     try {
       const enc = await getEncounter(request, encounterId);
       const encData = (enc as any)?.data || enc;
       const orderList = Array.isArray(encData?.orders) ? encData.orders : [];
+      if (encData?.appointmentId) {
+        setLinkedAppointmentId(String(encData.appointmentId));
+      }
       setOrders(orderList);
+      return orderList;
     } catch (err: any) {
       console.warn('Tải danh sách chỉ định cận lâm sàng thất bại:', err);
+      return [];
     } finally {
       setOrdersLoading(false);
     }
   };
 
   // Tải hóa đơn phát sinh cận lâm sàng để nắm bắt trạng thái thanh toán
-  const fetchSupplementaryInvoice = async () => {
-    if (!appointmentId) return;
+  const listClinicalInvoices = async () => {
+    let rawInvoices = activeAppointmentId
+      ? await listReceptionInvoices(request, {
+          appointmentId: activeAppointmentId,
+        }).catch(() => [])
+      : [];
+    // Billing filters appointmentId and encounterId together. If the doctor
+    // view was opened with an incomplete/stale appointment snapshot, retry by
+    // encounterId so the existing supplementary invoice is still found.
+    if (rawInvoices.length === 0 && encounterId) {
+      rawInvoices = await listReceptionInvoices(request, {
+        encounterId,
+      }).catch(() => []);
+    }
+    return rawInvoices;
+  };
+
+  const fetchSupplementaryInvoice = async (ordersOverride?: any[]) => {
+    if (!activeAppointmentId && !encounterId) return;
+    const currentOrders = ordersOverride ?? orders;
     setInvoiceLoading(true);
     try {
-      const rawInvoices = await listReceptionInvoices(request, {
-        appointmentId,
-      }).catch(() => []);
+      const rawInvoices = await listClinicalInvoices();
       const deskInvoices = rawInvoices
         .map((inv) => toInvoice(inv as Record<string, unknown> | undefined))
         .filter((inv): inv is DeskInvoice => inv !== null);
       let supp = deskInvoices.find((i) => i.type === 'SUPPLEMENTARY') || null;
 
       // Tự động đồng bộ sang billing nếu ca khám đã có y lệnh mà chưa có hóa đơn phát sinh hoặc thiếu dòng
-      if (orders.length > 0 && (!supp || supp.lines.length < orders.length)) {
-        for (const ord of orders) {
+      const billedOrderIds = new Set(
+        (supp?.lines ?? [])
+          .map((line) => line.sourceReferenceId)
+          .filter(Boolean)
+          .map(String),
+      );
+      const missingOrders = currentOrders.filter(
+        (ord) => ord?.id && !billedOrderIds.has(String(ord.id)),
+      );
+      if (missingOrders.length > 0) {
+        for (const ord of missingOrders) {
           const svc = serviceMap.get(ord.catalogServiceId);
           const price = svc?.prices?.[0]?.amountMinor
             ? Number(svc.prices[0].amountMinor)
@@ -176,7 +212,7 @@ export function DoctorClinicalServiceOrders({
           await request('/api/billing/invoices/service-order', {
             method: 'POST',
             body: JSON.stringify({
-              appointmentId,
+              appointmentId: activeAppointmentId,
               patientId,
               encounterId,
               orderId: ord.id,
@@ -190,9 +226,7 @@ export function DoctorClinicalServiceOrders({
             }),
           }).catch(() => null);
         }
-        const freshRaw = await listReceptionInvoices(request, {
-          appointmentId,
-        }).catch(() => []);
+        const freshRaw = await listClinicalInvoices();
         const freshInvs = freshRaw
           .map((inv) => toInvoice(inv as Record<string, unknown> | undefined))
           .filter((inv): inv is DeskInvoice => inv !== null);
@@ -217,20 +251,20 @@ export function DoctorClinicalServiceOrders({
 
   useEffect(() => {
     void fetchSupplementaryInvoice();
-  }, [appointmentId, orders.length]);
+  }, [activeAppointmentId, encounterId, orders.length]);
 
   // Lắng nghe SSE Realtime: Nếu quầy lễ tân hoặc phòng khác thanh toán, tự động cập nhật ngay tức thì
   useEffect(() => {
-    if (!appointmentId && !appointmentCode) return;
+    if (!activeAppointmentId && !appointmentCode) return;
     const unsubscribe = subscribeToRealtimeStream({
       url: '/api/appointment/desk/stream',
       getToken: getStoredAccessToken,
       streamFn: stream,
       onEvent: (event) => {
         const isMatch =
-          (appointmentId &&
-            (event.appointmentId === appointmentId ||
-              event.appointmentCode === appointmentId)) ||
+          (activeAppointmentId &&
+            (event.appointmentId === activeAppointmentId ||
+              event.appointmentCode === activeAppointmentId)) ||
           (appointmentCode &&
             (event.appointmentId === appointmentCode ||
               event.appointmentCode === appointmentCode));
@@ -243,7 +277,7 @@ export function DoctorClinicalServiceOrders({
     return () => {
       unsubscribe();
     };
-  }, [appointmentId, appointmentCode, encounterId, stream]);
+  }, [activeAppointmentId, appointmentCode, encounterId, stream]);
 
   // Map service ID -> CatalogService để tra cứu nhanh thông tin & giá (tra từ allServices)
   const serviceMap = useMemo(() => {
@@ -339,11 +373,11 @@ export function DoctorClinicalServiceOrders({
 
       // Tự động đồng bộ sang hóa đơn cận lâm sàng phát sinh cho Quầy thu ngân / Lễ tân
       const newOrderId = (orderRes as any)?.data?.id || (orderRes as any)?.id;
-      if (appointmentId && newOrderId) {
+      if (activeAppointmentId && newOrderId) {
         await request('/api/billing/invoices/service-order', {
           method: 'POST',
           body: JSON.stringify({
-            appointmentId,
+            appointmentId: activeAppointmentId,
             patientId,
             encounterId,
             orderId: newOrderId,
@@ -363,7 +397,7 @@ export function DoctorClinicalServiceOrders({
           method: 'POST',
           body: JSON.stringify({
             eventType: 'appointment.order_created',
-            appointmentId,
+            appointmentId: activeAppointmentId,
             appointmentCode,
             patientId,
             status: 'IN_CLINICAL_CARE',
@@ -376,8 +410,8 @@ export function DoctorClinicalServiceOrders({
       );
       setSelectedServiceId('');
       setOrderClinicalNotes('');
-      await fetchOrders();
-      await fetchSupplementaryInvoice();
+      const refreshedOrders = await fetchOrders();
+      await fetchSupplementaryInvoice(refreshedOrders);
       if (onOrderCreated) onOrderCreated();
     } catch (err: any) {
       console.error('Lỗi khi chỉ định cận lâm sàng:', err);
@@ -410,12 +444,12 @@ export function DoctorClinicalServiceOrders({
       });
 
       // 3. Broadcast realtime cho quầy tiếp đón / thu ngân cập nhật lại hóa đơn
-      if (appointmentId || appointmentCode) {
+      if (activeAppointmentId || appointmentCode) {
         await request('/api/appointment/desk/broadcast', {
           method: 'POST',
           body: JSON.stringify({
             eventType: 'appointment.order_deleted',
-            appointmentId,
+            appointmentId: activeAppointmentId,
             appointmentCode,
             patientId,
             status: 'IN_CLINICAL_CARE',
@@ -425,8 +459,8 @@ export function DoctorClinicalServiceOrders({
       }
 
       message.success('Đã xóa bỏ chỉ định cận lâm sàng thành công.');
-      await fetchOrders();
-      await fetchSupplementaryInvoice();
+      const refreshedOrders = await fetchOrders();
+      await fetchSupplementaryInvoice(refreshedOrders);
       if (onOrderCreated) onOrderCreated();
     } catch (err: any) {
       console.error('Lỗi khi xóa chỉ định:', err);
@@ -498,10 +532,14 @@ export function DoctorClinicalServiceOrders({
       };
 
       await updateServiceOrderResult(request, targetOrder.id, structuredResult);
+      // Bác sĩ là người upload trực tiếp kết quả tại màn hình khám, nên xác
+      // minh ngay sau khi file đã được lưu thành công. Trạng thái VERIFIED là
+      // điều kiện để chuyển bệnh án sang READY_FOR_REVIEW.
+      await verifyServiceOrderResult(request, targetOrder.id);
 
       const svc = serviceMap.get(targetOrder.catalogServiceId);
       message.success(
-        `Đã tải lên kết quả cho "${svc?.name || 'chỉ định'}" thành công!`,
+        `Đã tải lên và xác minh kết quả cho "${svc?.name || 'chỉ định'}" thành công!`,
       );
 
       await fetchOrders();
@@ -512,6 +550,22 @@ export function DoctorClinicalServiceOrders({
     } finally {
       setUploadingOrderId(null);
       targetUploadOrderRef.current = null;
+    }
+  };
+
+  const handleVerifyResult = async (record: any) => {
+    if (!record?.id || verifyingOrderId) return;
+    setVerifyingOrderId(record.id);
+    try {
+      await verifyServiceOrderResult(request, record.id);
+      message.success('Đã xác minh kết quả cận lâm sàng.');
+      const refreshedOrders = await fetchOrders();
+      await fetchSupplementaryInvoice(refreshedOrders);
+      if (onOrderCreated) onOrderCreated();
+    } catch (err: any) {
+      message.error(err?.message || 'Không thể xác minh kết quả cận lâm sàng.');
+    } finally {
+      setVerifyingOrderId(null);
     }
   };
 
@@ -561,9 +615,7 @@ export function DoctorClinicalServiceOrders({
     let currentSupp = suppInvoice;
     if (!currentSupp || currentSupp.lines.length < orders.length) {
       await fetchSupplementaryInvoice();
-      const rawInvoices = await listReceptionInvoices(request, {
-        appointmentId,
-      }).catch(() => []);
+      const rawInvoices = await listClinicalInvoices();
       const deskInvoices = rawInvoices
         .map((inv) => toInvoice(inv as Record<string, unknown> | undefined))
         .filter((inv): inv is DeskInvoice => inv !== null);
@@ -602,7 +654,7 @@ export function DoctorClinicalServiceOrders({
         method: 'POST',
         body: JSON.stringify({
           eventType: 'appointment.invoice_updated',
-          appointmentId,
+          appointmentId: activeAppointmentId,
           appointmentCode,
           patientId,
           paymentStatus: method === 'CASH' ? 'PAID' : 'UNPAID',
@@ -613,7 +665,7 @@ export function DoctorClinicalServiceOrders({
         method: 'POST',
         body: JSON.stringify({
           eventType: 'appointment.order_created',
-          appointmentId,
+          appointmentId: activeAppointmentId,
           appointmentCode,
           patientId,
           status: 'IN_CLINICAL_CARE',
@@ -901,17 +953,36 @@ export function DoctorClinicalServiceOrders({
     {
       title: 'Thao tác',
       key: 'actions',
-      width: 85,
+      width: 140,
       align: 'center',
       render: (_: any, record: any) => {
-        // Sau khi đã thanh toán -> MẤT NÚT XÓA ĐI
+        const hasUploadedResult = Boolean(record.structuredResult?.fileName);
+        const needsVerification =
+          hasUploadedResult && record.status !== 'VERIFIED';
+
+        // Sau khi đã thanh toán không được xóa chỉ định. Nếu file cũ chưa
+        // được xác minh, vẫn hiển thị thao tác để không bị kẹt ở bước hoàn tất.
         if (isSuppPaid) {
+          if (needsVerification && canEdit) {
+            return (
+              <Button
+                type="link"
+                size="small"
+                loading={verifyingOrderId === record.id}
+                disabled={Boolean(verifyingOrderId)}
+                onClick={() => void handleVerifyResult(record)}
+                style={{ fontWeight: 700, padding: 0 }}
+              >
+                Xác minh
+              </Button>
+            );
+          }
           return (
             <Tag
               color="success"
               style={{ margin: 0, fontSize: 11, fontWeight: 600 }}
             >
-              Đã chốt
+              {record.status === 'VERIFIED' ? 'Đã xác minh' : 'Đã chốt'}
             </Tag>
           );
         }

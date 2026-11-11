@@ -350,6 +350,24 @@ function Desk() {
             setOpenAppointment((cur) =>
               cur && isMatch(cur) ? updateInvoicesInApp(cur) : cur,
             );
+
+            // Search results are a separate snapshot from the day list. When
+            // the receptionist is looking up a patient, refresh that snapshot
+            // as well so a newly-created supplementary invoice appears in the
+            // open PatientCard without requiring a browser reload.
+            if (trimmed.length >= 2 && catalog) {
+              const refreshedSearch = await searchDesk(
+                request,
+                catalog,
+                trimmed,
+              );
+              setSearch(refreshedSearch);
+            }
+
+            // Also refresh the day list. Its enrich() pass repairs any
+            // supplementary invoice that was created before all order rows
+            // were visible to the receptionist.
+            setReload((current) => current + 1);
           } catch (invErr) {
             console.warn('Lỗi đồng bộ hóa đơn realtime:', invErr);
           }
