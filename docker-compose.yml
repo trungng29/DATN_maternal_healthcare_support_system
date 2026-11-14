@@ -979,7 +979,7 @@ services:
       retries: 10
       test:
         - CMD-SHELL
-        - wget -qO- http://localhost:5004/ready >/dev/null || exit 1
+        - wget -qO- http://127.0.0.1:5004/ready >/dev/null || exit 1
       timeout: 3s
     networks:
       app-network: null

@@ -740,7 +740,7 @@ export function PatientBookingPage() {
     }
     if (holdExpired) {
       setSubmitError(
-        'Thời gian giữ chỗ 5 phút đã hết hạn. Vui lòng chọn lại khung giờ khám.',
+        'Thời gian xác nhận lựa chọn đã hết hạn. Vui lòng chọn lại khung giờ khám.',
       );
       return;
     }
@@ -816,7 +816,7 @@ export function PatientBookingPage() {
 
     if (holdExpired) {
       setSubmitError(
-        'Thời gian giữ chỗ 5 phút đã hết hạn. Vui lòng quay lại bước 2 chọn lại khung giờ.',
+        'Thời gian xác nhận lựa chọn đã hết hạn. Vui lòng quay lại bước 2 chọn lại khung giờ.',
       );
       setIsSubmitting(false);
       return;
@@ -850,7 +850,7 @@ export function PatientBookingPage() {
       }
 
       // Bước B: Chuyển Hold thành Lịch hẹn chính thức (BookingChannel: ONLINE)
-      const appointment = await createAppointment(auth.request, hold.id);
+      const appointment = await createAppointment(auth.request, hold.id, clinicalNotes);
 
       setCreatedAppointment(appointment);
       setShowSuccessTicketModal(true); // Hiển thị popup modal phiếu hẹn ngay lập tức
@@ -1836,7 +1836,7 @@ export function PatientBookingPage() {
                             </strong>{' '}
                             ngày{' '}
                             <strong>{formatDateDisplay(selectedDate)}</strong>{' '}
-                            đã được giữ chỗ trong{' '}
+                            cần được xác nhận trong{' '}
                             <strong className="pb-hold-countdown">
                               {formattedHoldTimer}
                             </strong>
@@ -1847,7 +1847,7 @@ export function PatientBookingPage() {
 
                     {currentStep === 2 && selectedSlot && holdExpired && (
                       <div className="pb-hold-sidebar-expired">
-                        ⚠️ <strong>Hết hạn giữ chỗ:</strong> Thời gian giữ chỗ 5
+                        ⚠️ <strong>Hết thời gian xác nhận:</strong> Thời gian xác nhận 5
                         phút đã kết thúc. Vui lòng bấm chọn lại khung giờ khám.
                       </div>
                     )}
@@ -2556,7 +2556,7 @@ export function PatientBookingPage() {
                         )}
                       </strong>{' '}
                       ngày <strong>{formatDateDisplay(selectedDate)}</strong> đã
-                      được giữ chỗ trong{' '}
+                      được chọn. Vui lòng xác nhận trong{' '}
                       <strong className="pb-hold-countdown">
                         {formattedHoldTimer}
                       </strong>
@@ -2567,7 +2567,7 @@ export function PatientBookingPage() {
 
                 {selectedSlot && holdExpired && (
                   <div className="pb-hold-step3-expired">
-                    ⚠️ <strong>Hết hạn giữ chỗ:</strong> Thời gian giữ chỗ 5
+                    ⚠️ <strong>Hết thời gian xác nhận:</strong> Thời gian xác nhận 5
                     phút đã kết thúc. Vui lòng quay lại bước 2 chọn lại khung
                     giờ khám.
                   </div>

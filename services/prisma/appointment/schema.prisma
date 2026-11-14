@@ -51,6 +51,7 @@ model Appointment {
   id                       String                         @id @default(uuid()) @db.Uuid
   appointmentCode          String                         @unique @map("appointment_code") @db.VarChar(24)
   patientId                String                         @map("patient_id") @db.Uuid
+  reasonForVisit           String?                        @map("reason_for_visit") @db.VarChar(2000)
   serviceId                String                         @map("service_id") @db.Uuid
   channel                  BookingChannel
   selectionMode            SelectionMode                  @map("selection_mode")

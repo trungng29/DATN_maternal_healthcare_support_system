@@ -21,6 +21,7 @@ export class PatientGrpcController {
     'appointment-service',
     'consultation-service',
     'queue-service',
+    'medical-record-service',
   )
   @ServiceScopes('patient:eligibility:read')
   async getPatientEligibility(request: any) {

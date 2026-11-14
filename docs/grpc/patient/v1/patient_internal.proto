@@ -16,7 +16,7 @@ service PatientInternalService {
 }
 
 message ResolveNotificationAccountRequest { string patient_id = 1; }
-message ResolveNotificationAccountResponse { bool found = 1; string account_id = 2; }
+message ResolveNotificationAccountResponse { bool found = 1; string account_id = 2; string patient_name = 3; string date_of_birth = 4; string address = 5; }
 
 message GetPatientEligibilityRequest {
   maternal.common.v1.RequestContext context = 1;
@@ -64,4 +64,9 @@ message PatientIdentityView {
   string national_id_last4 = 5;
   bool active = 6;
   int64 profile_version = 7;
+  // Supplied only for the CLINICAL purpose to trusted internal callers.
+  string phone_number = 8;
+  string national_id = 9;
+  string address = 10;
+  string emergency_contact = 11;
 }

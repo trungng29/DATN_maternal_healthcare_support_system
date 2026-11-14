@@ -460,7 +460,7 @@ export class PatientsService {
     };
   }
 
-  async getInternalIdentity(patientId: string, _purpose: string) {
+  async getInternalIdentity(patientId: string, purpose: string) {
     this.uuid(patientId, 'INVALID_PATIENT_ID');
     const patient = await this.db.patient.findUnique({
       where: { id: patientId },
@@ -471,6 +471,8 @@ export class PatientsService {
         phoneNumber: true,
         nationalIdCiphertext: true,
         version: true,
+          address: true,
+          emergencyContacts: { orderBy: [{ isPrimary: 'desc' }, { priority: 'asc' }] },
       },
     });
     if (!patient) this.notFound();
@@ -488,6 +490,12 @@ export class PatientsService {
       nationalIdLast4: maskedId?.slice(-4) ?? '',
       active: true,
       profileVersion: patient.version,
+        ...(purpose === 'CLINICAL' ? {
+          phoneNumber: patient.phoneNumber,
+          nationalId: patient.nationalIdCiphertext ? this.crypto.decrypt(patient.nationalIdCiphertext) : '',
+          address: patient.address ?? '',
+          emergencyContact: patient.emergencyContacts?.[0] ? `${patient.emergencyContacts[0].fullName} (${patient.emergencyContacts[0].relationship} - ${patient.emergencyContacts[0].phoneNumber})` : '',
+        } : {}),
     };
   }
 
