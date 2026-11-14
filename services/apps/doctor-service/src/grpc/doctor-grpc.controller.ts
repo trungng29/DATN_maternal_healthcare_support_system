@@ -28,6 +28,7 @@ export class DoctorGrpcController {
   @GrpcMethod('DoctorInternalService', 'ResolveDoctorByAccount')
   @ServiceCallers(
     'appointment-service',
+    'billing-service',
     'medical-record-service',
     'consultation-service',
     'prescription-service',

@@ -14,6 +14,7 @@ import {
   AppointmentDetailPage,
   PatientAppointmentsPage,
 } from '../modules/patient/pages/PatientAppointmentsPage';
+import { PatientAppointmentResultsPage } from '../modules/patient/pages/PatientAppointmentResultsPage';
 
 import { PatientNotificationsBillingPage } from '../modules/patient/pages/PatientNotificationsBillingPage';
 import { PatientServiceDetailPage } from '../modules/patient/pages/PatientServiceDetailPage';
@@ -315,6 +316,17 @@ function Routes() {
       </Protected>
     );
   const appointmentDetailMatch = rawPath.match(/^\/lich-hen\/([^/]+)$/i);
+  const appointmentResultsMatch = rawPath.match(/^\/lich-hen\/([^/]+)\/ket-qua$/i);
+  if (appointmentResultsMatch)
+    return (
+      <Protected>
+        <PatientProfileRequired>
+          <PatientAppointmentResultsPage
+            appointmentId={decodeURIComponent(appointmentResultsMatch[1])}
+          />
+        </PatientProfileRequired>
+      </Protected>
+    );
   if (appointmentDetailMatch)
     return (
       <Protected>

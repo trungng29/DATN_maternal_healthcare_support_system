@@ -35,6 +35,10 @@ type Ctx = {
 const STAFF = ['RECEPTIONIST', 'CLINIC_MANAGER', 'ADMIN'];
 @Injectable()
 export class AppointmentDomainService {
+  private isFutureVisit(startAt: Date): boolean {
+    const day = (value: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(value);
+    return day(startAt) > day(new Date());
+  }
   constructor(
     private readonly db: AppointmentPrismaService,
     private readonly deps: AppointmentDependencyGateway,
@@ -801,6 +805,7 @@ export class AppointmentDomainService {
           data: {
             appointmentCode: this.code(),
             patientId: hold.patientId,
+            reasonForVisit: dto.reasonForVisit?.trim() || null,
             serviceId: hold.serviceId,
             channel: dto.channel,
             selectionMode: hold.selectionMode,
@@ -965,12 +970,22 @@ export class AppointmentDomainService {
     });
     const items = rows.slice(0, q.limit ?? 20);
     const names = new Map<string, string>();
+    const demographics = new Map<string, any>();
     if (auth.role === 'DOCTOR') {
       const ids = [...new Set(items.map((x) => x.patientId))];
       await Promise.all(
         ids.map(async (id) => {
           const result = await this.deps.patientIdentity(id, this.ctx(auth));
           names.set(id, result.patient?.fullName ?? '');
+          const patient = result.patient;
+          if (patient) demographics.set(id, {
+            name: patient.fullName,
+            phone: patient.phoneNumber || patient.maskedPhone || '',
+            dob: patient.dateOfBirth?.seconds ? new Date(Number(patient.dateOfBirth.seconds) * 1000).toISOString().slice(0, 10) : '',
+            nationalId: patient.nationalId || '',
+            address: patient.address || '',
+            emergencyContact: patient.emergencyContact || '',
+          });
         }),
       );
     }
@@ -978,7 +993,7 @@ export class AppointmentDomainService {
       items: items.map((x) => ({
         ...presentAppointment(x),
         ...(auth.role === 'DOCTOR'
-          ? { patientName: names.get(x.patientId) ?? '' }
+          ? { patientName: names.get(x.patientId) ?? '', patientDemographics: demographics.get(x.patientId) }
           : {}),
       })),
       nextPageToken: rows.length > (q.limit ?? 20) ? items.at(-1)?.id : null,
@@ -1179,6 +1194,7 @@ export class AppointmentDomainService {
         });
     if (!x || x.patientId !== patientId)
       return { valid: false, failureCode: 'APPOINTMENT_NOT_FOUND' };
+    if (this.isFutureVisit(x.startAt)) return { valid: false, failureCode: 'APPOINTMENT_NOT_DUE' };
     return {
       valid: x.status === AppointmentStatus.BOOKED,
       failureCode: x.status === AppointmentStatus.BOOKED ? '' : 'INVALID_STATE',
@@ -1190,6 +1206,8 @@ export class AppointmentDomainService {
     };
   }
   async checkIn(id: string, input: any, key?: string) {
+    const visit = await this.db.appointment.findUnique({ where: { id } });
+    if (visit && this.isFutureVisit(visit.startAt)) this.fail(422, 'APPOINTMENT_NOT_DUE', 'Chưa đến ngày hẹn. Vui lòng dời lịch trước khi tiếp nhận sớm.');
     if (
       ![
         'PAID',

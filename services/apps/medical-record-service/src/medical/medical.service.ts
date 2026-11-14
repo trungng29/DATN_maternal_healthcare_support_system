@@ -30,6 +30,27 @@ export class MedicalDomainService {
     return this.doctorIdentity.resolve(accountId);
   }
 
+  async scopeReadQuery(query: any, auth: PublicAuthContext) {
+    if (auth.role === 'PATIENT') {
+      const patientId = await this.doctorIdentity.patientForAccount(auth.userId);
+      if (query?.patientId && query.patientId !== patientId) throw new ForbiddenException('PATIENT_MISMATCH');
+      return { ...query, patientId };
+    }
+    if (!['DOCTOR', 'ADMIN', 'NURSE', 'RECEPTIONIST', 'CLINIC_MANAGER'].includes(auth.role)) throw new ForbiddenException('CLINICAL_ACCESS_REQUIRED');
+    return query;
+  }
+
+  async assertReadAccess(id: string, auth: PublicAuthContext) {
+    if (auth.role === 'DOCTOR') return this.assertDoctorAssigned(id, auth.userId);
+    if (auth.role === 'PATIENT') {
+      const patientId = await this.doctorIdentity.patientForAccount(auth.userId);
+      const encounter = await this.get(id);
+      if (encounter.patientId !== patientId) throw new ForbiddenException('PATIENT_MISMATCH');
+      return;
+    }
+    await this.scopeReadQuery({}, auth);
+  }
+
   async assertDoctorAssigned(id: string, accountId: string) {
     const doctorId = await this.doctorIdentity.resolve(accountId);
     const assignment = await this.db.encounterAssignment.findFirst({
@@ -64,6 +85,7 @@ export class MedicalDomainService {
             appointmentId,
             patientId,
             primaryDoctorId,
+            chiefComplaint: input.chiefComplaint || input.chief_complaint || null,
             assignments: {
               create: {
                 staffId: primaryDoctorId,

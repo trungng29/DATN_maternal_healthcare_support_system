@@ -500,7 +500,7 @@ export function DoctorConsultationDetail({
           'Bệnh nhân',
       ),
       patientDob: patientInfo?.dob || undefined,
-      patientGender: patientInfo?.gender || 'Nữ',
+      patientGender: patientInfo?.gender || '',
       patientPhone: String(
         patientInfo?.phone ||
           appointment.patientPhoneNumberSnapshot ||
@@ -1105,11 +1105,13 @@ export function DoctorConsultationDetail({
 
   // Tính tuổi bệnh nhân
   const patientAge = useMemo(() => {
-    if (!patientInfo?.dob) return 28;
+    if (!patientInfo?.dob) return null;
     const birth = new Date(patientInfo.dob);
     const now = new Date();
+    if (Number.isNaN(birth.getTime())) return null;
     let age = now.getFullYear() - birth.getFullYear();
-    return age > 0 ? age : 28;
+    if (now.getMonth() < birth.getMonth() || (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate())) age--;
+    return age >= 0 ? age : null;
   }, [patientInfo?.dob]);
 
   // Tính BMI tự động (chỉ tính khi có cả cân nặng và chiều cao)
@@ -1280,7 +1282,7 @@ export function DoctorConsultationDetail({
                   {patientInfo?.name || appointment.patientName || 'Bệnh nhân'}
                 </h2>
                 <span className="patient-sub-demographic">
-                  {patientInfo?.gender || 'Nữ'} · {patientAge} tuổi (
+                  {patientInfo?.gender || 'Chưa cập nhật giới tính'} · {patientAge === null ? 'Chưa có tuổi' : `${patientAge} tuổi`} (
                   {patientInfo?.dob
                     ? new Date(patientInfo.dob).toLocaleDateString('vi-VN')
                     : '—'}
@@ -1474,13 +1476,13 @@ export function DoctorConsultationDetail({
             <div className="patient-admin-item">
               <span className="meta-label">CCCD / ĐỊNH DANH</span>
               <strong className="meta-val">
-                {patientInfo?.nationalId || '001196000112'}
+                {patientInfo?.nationalId || 'Chưa cập nhật'}
               </strong>
             </div>
             <div className="patient-admin-item">
               <span className="meta-label">SỐ ĐIỆN THOẠI</span>
               <strong className="meta-val">
-                {patientInfo?.phone || appointment.patientPhone || '0901234023'}
+                {patientInfo?.phone || appointment.patientPhone || 'Chưa cập nhật'}
               </strong>
             </div>
           </div>
@@ -1493,14 +1495,14 @@ export function DoctorConsultationDetail({
               <span className="meta-label">ĐỊA CHỈ THƯỜNG TRÚ</span>
               <span className="meta-val-full">
                 {patientInfo?.address ||
-                  '18 Lý Thường Kiệt, Phan Chu Trinh, Hoàn Kiếm, Hà Nội'}
+                  'Chưa cập nhật'}
               </span>
             </div>
             <div className="patient-admin-item item-wide">
               <span className="meta-label">NGƯỜI THÂN LIÊN HỆ</span>
               <span className="meta-val-full">
                 {patientInfo?.emergencyContact ||
-                  'Lê Quang Huy (Chồng - 0901234024)'}
+                  'Chưa cập nhật'}
               </span>
             </div>
           </div>

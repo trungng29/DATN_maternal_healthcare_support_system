@@ -14,6 +14,30 @@ import { QueueRealtimeService } from './queue-realtime.service';
 
 @Injectable()
 export class QueueDomainService {
+  async syncClinicalJourney(input: { appointmentId: string; encounterId: string; action: string }) {
+    if (!['START', 'COMPLETE'].includes(input.action)) throw new ConflictException('INVALID_CLINICAL_ACTION');
+    const changed = await this.db.$transaction(async tx => {
+      const journey = await tx.queueJourney.findUnique({ where: { appointmentId: input.appointmentId } });
+      if (!journey) throw new NotFoundException('JOURNEY_NOT_FOUND');
+      if (journey.encounterId !== input.encounterId) throw new ConflictException('ENCOUNTER_MISMATCH');
+      const tickets = await tx.stageTicket.findMany({ where: { journeyId: journey.id, stage: { code: 'CONSULTATION' }, state: { in: [TicketState.WAITING, TicketState.CALLED, TicketState.IN_SERVICE] } } });
+      const ids: string[] = [];
+      for (const ticket of tickets) {
+        const state = input.action === 'COMPLETE' ? TicketState.COMPLETED : TicketState.IN_SERVICE;
+        if (ticket.state === state) continue;
+        await tx.stageTicket.update({ where: { id: ticket.id }, data: { state, version: { increment: 1 }, serviceStartedAt: ticket.serviceStartedAt ?? new Date(), ...(input.action === 'COMPLETE' ? { completedAt: new Date() } : {}), callExpiresAt: null } });
+        await tx.queueAudit.create({ data: { eventType: input.action === 'COMPLETE' ? 'queue.clinical_completed' : 'queue.clinical_started', ticketId: ticket.id, reason: 'Authoritative encounter synchronization' } });
+        ids.push(ticket.id);
+      }
+      if (input.action === 'COMPLETE') {
+        const pending = await tx.stageTicket.count({ where: { journeyId: journey.id, state: { in: [TicketState.WAITING, TicketState.CALLED, TicketState.IN_SERVICE] } } });
+        if (!pending && journey.state === JourneyState.ACTIVE) await tx.queueJourney.update({ where: { id: journey.id }, data: { state: JourneyState.COMPLETED, version: { increment: 1 } } });
+      }
+      return ids;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    for (const id of changed) await this.notifyTicketChange(id, input.action === 'COMPLETE' ? 'queue.ticket_completed.v1' : 'queue.ticket_service_started.v1');
+    return { synchronized: true };
+  }
     private getRoomPrefix(roomCode?: string | null, stageCode?: string): string {
     if (roomCode && typeof roomCode === 'string') {
       const trimmed = roomCode.trim();

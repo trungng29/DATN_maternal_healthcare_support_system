@@ -379,11 +379,16 @@ export function updateReceptionTicket(
 }
 export async function listReceptionInvoices(
   request: Requester,
-  query: { patientId?: string; appointmentId?: string },
+  query: {
+    patientId?: string;
+    appointmentId?: string;
+    encounterId?: string;
+  },
 ): Promise<ReceptionInvoice[]> {
   const params = new URLSearchParams({ limit: '50' });
   if (query.patientId) params.set('patientId', query.patientId);
   if (query.appointmentId) params.set('appointmentId', query.appointmentId);
+  if (query.encounterId) params.set('encounterId', query.encounterId);
   const raw = await request<unknown>(`/api/billing/invoices?${params}`);
   const value = raw as {
     items?: ReceptionInvoice[];

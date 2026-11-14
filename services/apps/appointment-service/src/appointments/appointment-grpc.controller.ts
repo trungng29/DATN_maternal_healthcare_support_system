@@ -171,6 +171,7 @@ export class AppointmentGrpcController {
       roomId: x.roomId ?? '',
       roomCode: x.roomCode ?? '',
       roomName: x.roomName ?? '',
+      reasonForVisit: x.reasonForVisit ?? '',
     };
   }
 }

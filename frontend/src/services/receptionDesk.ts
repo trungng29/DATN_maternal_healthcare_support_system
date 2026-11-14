@@ -7,6 +7,7 @@ import {
   listReceptionQueueStages,
   listReceptionStageTickets,
   openReceptionCase,
+  verifyReceptionIdentity,
   recordReceptionCashPayment,
   searchReceptionPatients,
   getReceptionPatient,
@@ -53,6 +54,7 @@ export interface DeskInvoice {
   type?: 'BASE' | 'SUPPLEMENTARY';
   version: number;
   lines: Array<{
+    sourceReferenceId?: string;
     name: string;
     qty: number;
     unitPrice: number;
@@ -408,6 +410,7 @@ export function toInvoice(
     createdAt: str(raw.createdAt) ?? undefined,
     updatedAt: str(raw.updatedAt) ?? undefined,
     lines: lines.map((l) => ({
+      sourceReferenceId: str(l.sourceReferenceId) ?? undefined,
       name: (str(l.descriptionSnapshot) ?? '').replace(
         ': undefined',
         ': Khám theo yêu cầu',
@@ -457,6 +460,108 @@ async function ticketMap(
   return map;
 }
 
+// A realtime event can make the search snapshot and the day snapshot enrich
+// the same appointment at the same time. Serialize reconciliation per
+// appointment so two stale reads cannot race while adding invoice lines.
+const supplementaryInvoiceSyncs = new Map<string, Promise<DeskInvoice[]>>();
+
+async function reconcileSupplementaryInvoice(
+  request: Requester,
+  cat: DeskCatalog,
+  appointment: ReceptionAppointment,
+  appointmentId: string,
+  encounterId: string,
+  initialInvoices: DeskInvoice[],
+): Promise<DeskInvoice[]> {
+  const running = supplementaryInvoiceSyncs.get(appointmentId);
+  if (running) return running;
+
+  const run = (async () => {
+    const encRaw: any = await request(
+      `/api/medical-records/encounters/${encodeURIComponent(encounterId)}`,
+    );
+    const encData = encRaw?.data || encRaw;
+    const orders = Array.isArray(encData?.orders) ? encData.orders : [];
+    const supplementary = initialInvoices.find(
+      (invoice) => invoice.type === 'SUPPLEMENTARY',
+    );
+    const existingOrderIds = new Set(
+      (supplementary?.lines ?? [])
+        .map((line) => line.sourceReferenceId)
+        .filter((id): id is string => Boolean(id))
+        .map(String),
+    );
+    const orderIds = new Set(
+      orders
+        .map((order: any) => order?.id)
+        .filter((id: unknown): id is string => Boolean(id))
+        .map(String),
+    );
+
+    // Only remove a line after the encounter response was read successfully.
+    // A temporary medical-record/API error must never delete valid invoice
+    // rows.
+    const staleOrderIds = [...existingOrderIds].filter(
+      (orderId) => !orderIds.has(orderId),
+    );
+    for (const orderId of staleOrderIds) {
+      await request(
+        `/api/billing/invoices/service-order/${encodeURIComponent(orderId)}`,
+        { method: 'DELETE' },
+      );
+    }
+
+    const missingOrders = orders.filter(
+      (order: any) => order?.id && !existingOrderIds.has(String(order.id)),
+    );
+    for (const order of missingOrders) {
+      const serviceId = String(order.catalogServiceId ?? '');
+      if (!serviceId) continue;
+      const service = cat.services.find((item) => item.id === serviceId);
+      const amountMinor = Number(
+        service?.price ??
+          order.amountMinor ??
+          order.unitAmountMinor ??
+          order.priceMinor ??
+          0,
+      );
+      await request('/api/billing/invoices/service-order', {
+        method: 'POST',
+        body: JSON.stringify({
+          appointmentId,
+          patientId: String(appointment.patientId ?? ''),
+          encounterId,
+          orderId: String(order.id),
+          serviceId,
+          serviceName:
+            service?.name ??
+            order.catalogServiceName ??
+            order.serviceName ??
+            'Dịch vụ cận lâm sàng',
+          amountMinor: Number.isFinite(amountMinor) ? amountMinor : 0,
+        }),
+      });
+    }
+
+    if (staleOrderIds.length === 0 && missingOrders.length === 0)
+      return initialInvoices;
+    const freshInvoices = await listReceptionInvoices(request, {
+      appointmentId,
+    });
+    return freshInvoices
+      .map((invoice) => toInvoice(invoice as Record<string, unknown>))
+      .filter((invoice): invoice is DeskInvoice => invoice !== null);
+  })();
+
+  supplementaryInvoiceSyncs.set(appointmentId, run);
+  try {
+    return await run;
+  } finally {
+    if (supplementaryInvoiceSyncs.get(appointmentId) === run)
+      supplementaryInvoiceSyncs.delete(appointmentId);
+  }
+}
+
 async function enrich(
   request: Requester,
   cat: DeskCatalog,
@@ -478,15 +583,53 @@ async function enrich(
         .filter((invoice): invoice is DeskInvoice => invoice !== null);
 
       const encId = str(x.encounterId) ?? str(r.encounterId);
-      // Nếu ca khám đang diễn ra hoặc đã có encounter nhưng chưa tạo hóa đơn phát sinh CLS, tự động đồng bộ
-      if (encId && !deskInvoices.some((inv) => inv.type === 'SUPPLEMENTARY')) {
+      // Nếu ca khám đang diễn ra hoặc đã có encounter nhưng hóa đơn phát sinh
+      // chưa có đủ dòng tương ứng với các chỉ định, tự động bù các dòng còn
+      // thiếu. Trước đây chỉ kiểm tra hóa đơn có tồn tại hay chưa, khiến một
+      // hóa đơn đã có 1 chỉ định sẽ không bao giờ nhận thêm các chỉ định mới.
+      if (encId) {
         try {
+          deskInvoices = await reconcileSupplementaryInvoice(
+            request,
+            cat,
+            r,
+            id,
+            encId,
+            deskInvoices,
+          );
+          /* legacy reconciliation implementation retained for reference
           const encRaw: any = await request(
             `/api/medical-records/encounters/${encodeURIComponent(encId)}`,
           ).catch(() => null);
           const encData = encRaw?.data || encRaw;
           const orders = Array.isArray(encData?.orders) ? encData.orders : [];
-          if (orders.length > 0) {
+          const orderIds = new Set(
+            orders.map((order: any) => String(order.id)),
+          );
+          const staleLines = (supplementaryInvoice?.lines ?? []).filter(
+            (line) =>
+              Boolean(line.sourceReferenceId) &&
+              !orderIds.has(String(line.sourceReferenceId)),
+          );
+          let invoiceChanged = staleLines.length > 0;
+
+          // Remove invoice lines whose clinical orders were deleted by the
+          // doctor. This is needed in addition to adding missing lines: an
+          // invoice can otherwise keep displaying a deleted order forever.
+          for (const line of staleLines) {
+            await request(
+              `/api/billing/invoices/service-order/${encodeURIComponent(String(line.sourceReferenceId))}`,
+              { method: 'DELETE' },
+            ).catch(() => null);
+          }
+
+          if (
+            orders.length > 0 &&
+            (!supplementaryInvoice ||
+              supplementaryInvoice.lines.length < orders.length ||
+              staleLines.length > 0)
+          ) {
+            invoiceChanged = true;
             for (const ord of orders) {
               const svc = cat.services.find(
                 (s) => s.id === ord.catalogServiceId,
@@ -505,6 +648,8 @@ async function enrich(
                 }),
               }).catch(() => null);
             }
+          }
+          if (invoiceChanged) {
             const freshInvoices = await listReceptionInvoices(request, {
               appointmentId: id,
             }).catch(() => []);
@@ -512,6 +657,7 @@ async function enrich(
               .map((invoice) => toInvoice(invoice as Record<string, unknown>))
               .filter((invoice): invoice is DeskInvoice => invoice !== null);
           }
+          */
         } catch (syncErr) {
           console.warn('Lỗi kiểm tra y lệnh CLS cho quầy tiếp đón:', syncErr);
         }
@@ -776,12 +922,22 @@ export async function checkInAppointment(
   };
   const caseId = c?.id ?? c?.data?.id;
   if (!caseId) throw new Error('Không thể mở hồ sơ tiếp nhận.');
-  const caseStatus = c.status ?? c.data?.status;
-  if (!caseStatus || caseStatus === 'OPEN')
-    throw new Error(
-      'Đã mở case. Hãy mở chuông công việc và xác minh danh tính trước khi tiếp nhận.',
-    );
-  else if (!['IDENTITY_VERIFIED', 'ADMISSION_IN_PROGRESS'].includes(caseStatus))
+  let caseStatus = c.status ?? c.data?.status;
+  if (!caseStatus)
+    throw new Error('Không xác định được trạng thái hồ sơ tiếp nhận.');
+  // The appointment desk action is an authorized receptionist workflow too.
+  // Reuse the same explicit verification operation as the work bell before
+  // attempting admission, so the old one-click payment/check-in action does
+  // not stop at an OPEN case.
+  if (caseStatus === 'OPEN') {
+    await verifyReceptionIdentity(request, caseId, {
+      method: 'APPOINTMENT_CODE',
+      result: 'VERIFIED',
+      verifiedFields: ['fullName', 'appointmentId'],
+    });
+    caseStatus = 'IDENTITY_VERIFIED';
+  }
+  if (!['IDENTITY_VERIFIED', 'ADMISSION_IN_PROGRESS'].includes(caseStatus))
     throw new Error('Case không ở trạng thái có thể tiếp nhận.');
   const res = (await admitReceptionCase(request, caseId)) as Record<
     string,
@@ -1040,32 +1196,28 @@ export async function payAndCheckInAppointment(
   a: DeskAppointment,
   reference?: string,
 ): Promise<{ success: boolean; ticketCode?: string }> {
-  let invoice = a.invoices?.find((i) => i.type === 'BASE') ?? a.invoice ?? null;
+  // Prepare/verify the reception case before taking money. This makes the
+  // operation safe to retry and prevents a paid invoice being left behind
+  // when case admission is rejected.
+  const firstReception = await checkInAppointment(request, a);
+  if (!firstReception.awaitingPayment)
+    return { success: true, ticketCode: firstReception.ticketCode };
 
-  // 1. Nếu chưa có invoice (lịch hẹn tạo trước đó), tìm từ API hoặc kích hoạt tạo Base Invoice
-  if (!invoice) {
-    const invs = await listReceptionInvoices(request, {
-      appointmentId: a.id,
-    }).catch(() => []);
-    const deskInvs = invs
-      .map((inv) => toInvoice(inv as Record<string, unknown> | undefined))
-      .filter(Boolean) as DeskInvoice[];
-    invoice = deskInvs.find((i) => i.type === 'BASE') ?? deskInvs[0] ?? null;
-  }
-  if (!invoice) {
-    const reception = await checkInAppointment(request, a);
-    if (!reception.awaitingPayment)
-      return { success: true, ticketCode: reception.ticketCode };
-    const invs = await listReceptionInvoices(request, {
-      appointmentId: a.id,
-    }).catch(() => []);
-    const deskInvs = invs
-      .map((inv) => toInvoice(inv as Record<string, unknown> | undefined))
-      .filter(Boolean) as DeskInvoice[];
-    invoice = deskInvs.find((i) => i.type === 'BASE') ?? deskInvs[0] ?? null;
-  }
+  const invs = await listReceptionInvoices(request, {
+    appointmentId: a.id,
+  }).catch(() => []);
+  const deskInvs = invs
+    .map((inv) => toInvoice(inv as Record<string, unknown> | undefined))
+    .filter(Boolean) as DeskInvoice[];
+  const invoice =
+    deskInvs.find((i) => i.type === 'BASE') ??
+    deskInvs[0] ??
+    a.invoices?.find((i) => i.type === 'BASE') ??
+    a.invoice ??
+    null;
+  if (!invoice) throw new Error('Chưa tạo được hóa đơn ban đầu cho lịch hẹn này.');
 
-  // 2. Ghi nhận thanh toán tiền mặt tại quầy để chuyển sang PAID
+  // Ghi nhận thanh toán tiền mặt tại quầy để chuyển sang PAID.
   if (invoice && invoice.balance > 0) {
     await recordReceptionCashPayment(request, {
       id: invoice.id,
@@ -1075,7 +1227,7 @@ export async function payAndCheckInAppointment(
     });
   }
 
-  // 3. Tiến hành Check-in chính thức để cấp số thứ tự vào hàng đợi
+  // Tiến hành Check-in chính thức để cấp số thứ tự vào hàng đợi.
   const res = await checkInAppointment(request, a);
   return {
     success: true,
