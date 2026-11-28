@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet('Docker', 'Local', 'PrepareOnly')]
   [string]$Mode = 'Docker',
   [switch]$NoBuild
@@ -222,67 +222,51 @@ Write-Host "Environment ready: $EnvPath"
 
 if ($Mode -eq 'PrepareOnly') { exit 0 }
 
-function Wait-Healthy([string]$Service) {
-  $deadline = (Get-Date).AddMinutes(2)
-  do {
-    $id = (& docker compose ps -q $Service).Trim()
-    if ($id) {
-      $health = (& docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' $id).Trim()
-      if ($health -eq 'healthy') { return }
-    }
-    Start-Sleep -Seconds 2
-  } while ((Get-Date) -lt $deadline)
-  throw "Timeout waiting for $Service"
-}
-
 function Wait-Migration([string]$Service) {
   $deadline = (Get-Date).AddMinutes(3)
   do {
-    $id = (& docker compose ps -aq $Service).Trim()
-    if ($id) {
-      $state = (& docker inspect --format '{{.State.Status}}|{{.State.ExitCode}}' $id).Trim()
-      if ($state -eq 'exited|0') { return }
-      if ($state -like 'exited|*') { throw "$Service failed. Run: docker compose logs $Service" }
+    $container = & docker compose --project-directory $Root ps -aq $Service
+    if ($LASTEXITCODE -eq 0 -and $container) {
+      $rawState = & docker inspect --format '{{.State.Status}}|{{.State.ExitCode}}' $container
+      if ($LASTEXITCODE -eq 0 -and $rawState) {
+        $state = ([string]$rawState).Trim()
+        if ($state -eq 'exited|0') { return }
+        if ($state -like 'exited|*') { throw "$Service failed. Run: docker compose logs $Service" }
+      }
     }
     Start-Sleep -Seconds 2
   } while ((Get-Date) -lt $deadline)
-  throw "Timeout waiting for $Service"
+  throw "Unable to verify migration $Service before the deadline. Check Docker Desktop and docker compose logs."
 }
 
-if ($Mode -eq 'Docker') {
-  Run-Command 'docker' @('info')
-  Run-Command 'docker' @('compose','config','--quiet')
-  if ($NoBuild) { Run-Command 'docker' @('compose','up','-d') }
-  else { Run-Command 'docker' @('compose','up','--build','-d') }
-  $migrationServices = @(
+$migrationServices = @(
     'auth-migrate','doctor-migrate','receptionist-migrate','patient-migrate',
     'catalog-migrate','appointment-migrate','billing-migrate','medical-record-migrate',
     'queue-migrate','document-migrate','prescription-migrate','treatment-plan-migrate',
     'notification-migrate','audit-log-migrate','reporting-migrate','consultation-migrate'
   )
+if ($Mode -eq 'Docker') {
+  Run-Command 'docker' @('info')
+  Run-Command 'docker' @('compose','config','--quiet')
+  if (-not $NoBuild) { Run-Command 'docker' @('compose','build','auth-migrate') }
+  Run-Command 'docker' (@('compose','up','--no-build','-d') + $migrationServices)
   foreach ($migration in $migrationServices) { Wait-Migration $migration }
-  Run-Command 'docker' @('compose','ps','-a')
   exit 0
 }
 
 if ($Mode -eq 'Local') {
-  Run-Command 'docker' @('compose','up','-d','auth-database','doctor-database','receptionist-database','patient-database')
-  Wait-Healthy 'auth-database'
-  Wait-Healthy 'doctor-database'
-  Wait-Healthy 'receptionist-database'
-  Wait-Healthy 'patient-database'
+  # Compose runs the same migration set in Docker and local-app modes.
+  Run-Command 'docker' @('compose','build','auth-migrate')
+  Run-Command 'docker' (@('compose','up','--no-build','-d') + $migrationServices)
+  foreach ($migration in $migrationServices) { Wait-Migration $migration }
   Push-Location $ServicesPath
   try {
-    if (-not (Test-Path (Join-Path $ServicesPath 'node_modules'))) { npm.cmd ci }
-    npm.cmd run prisma:generate
-    npm.cmd run prisma:generate:doctor
-    npm.cmd run prisma:generate:patient
-    npm.cmd run prisma:migrate:deploy
-    npm.cmd run prisma:migrate:doctor
-    npm.cmd run prisma:migrate:receptionist
-    npm.cmd run prisma:migrate:patient
-    npm.cmd run prisma:seed
-    npm.cmd run prisma:seed:doctor
+    if (-not (Test-Path (Join-Path $ServicesPath 'node_modules'))) {
+      Run-Command 'npm.cmd' @('ci') $ServicesPath
+    }
+    Run-Command 'npm.cmd' @('run','prisma:generate') $ServicesPath
+    Run-Command 'npm.cmd' @('run','prisma:generate:doctor') $ServicesPath
+    Run-Command 'npm.cmd' @('run','prisma:generate:patient') $ServicesPath
   } finally { Pop-Location }
   Write-Host 'Local databases migrated. Run . .\scripts\load-env.ps1 before starting each app.'
   exit 0

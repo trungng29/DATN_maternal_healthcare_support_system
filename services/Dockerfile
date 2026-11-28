@@ -26,19 +26,20 @@ RUN set -eux; \
       prisma/consultation/schema.prisma; \
     do npx prisma generate --schema "$schema"; done
 
-ARG APP_NAME=auth-service
-RUN npx nest build "$APP_NAME"
-
 FROM builder AS migrator
 ENV PRISMA_SCHEMA=prisma/schema.prisma
 CMD ["sh", "-c", "exec npx prisma migrate deploy --schema $PRISMA_SCHEMA"]
+
+FROM builder AS compiled
+ARG APP_NAME=auth-service
+RUN npx nest build "$APP_NAME"
 
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm ci --omit=dev
-COPY --from=builder /app/dist ./dist
+COPY --from=compiled /app/dist ./dist
 COPY --from=builder /app/generated ./generated
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma

@@ -8,7 +8,7 @@ help:
 	@echo "make up            Start the full stack"
 	@echo "make up-d          Start the full stack in background"
 	@echo "make down          Stop containers and keep volumes"
-	@echo "make seed-demo     Seed idempotent demo data"
+	@echo "make seed-demo     Seed demo data on a new database"
 	@echo "make seed-system   Seed full system data (seed_system_data.js)"
 	@echo "make frontend-test Run frontend tests and build"
 	@echo "make backend-test  Run backend tests"
@@ -38,7 +38,7 @@ status:
 	docker compose ps -a
 
 seed-demo:
-	cd services && npm.cmd run prisma:seed:demo
+	cd services && npm.cmd run seed:system
 
 seed-system:
 	cd services && node seed_system_data.js

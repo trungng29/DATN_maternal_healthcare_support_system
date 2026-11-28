@@ -1,3 +1,4 @@
+import { specialtyImage } from '../../../../shared/components/portal/catalogImages';
 import template from './template.html?raw';
 import additions from './landing.css?raw';
 import surfaceStyles from './landing-surfaces.css?raw';
@@ -38,12 +39,13 @@ export interface LandingDoctor {
   specialties?: { name: string }[];
 }
 export interface LandingData {
-  specialties: { slug: string; name: string; description?: string | null }[];
+  specialties: { code?: string; slug: string; name: string; description?: string | null }[];
   services: {
     id?: string;
     slug?: string;
     name?: string;
     summary?: string;
+    thumbnailUrl?: string;
     prices?: { amountMinor?: number; currency?: string; status?: string }[];
   }[];
   doctors: LandingDoctor[];
@@ -76,6 +78,10 @@ export function buildLandingDocument(data: LandingData) {
   doc
     .querySelector('#hero')!
     .insertAdjacentHTML('afterend', '<div id="patient-summary"></div>');
+  doc.querySelector('#about')?.insertAdjacentHTML(
+    'beforeend',
+    '<p class="p">Danh mục, nhân sự và hình ảnh là dữ liệu minh họa của hệ thống demo.</p>',
+  );
   const statistics = doc.querySelector('#hero .vs');
   if (statistics) doc.querySelector('#about')!.after(statistics);
   doc.querySelector('#spec .p')!.textContent =
@@ -96,10 +102,11 @@ export function buildLandingDocument(data: LandingData) {
           '0',
         );
         const media = temp.querySelector<HTMLElement>('.ag-m')!;
-        media.style.backgroundImage = `url("${stockCarePhotos[i % stockCarePhotos.length]}")`;
+        const cover = specialtyImage(s.code) || '/images/pregnancy-7089337.jpg';
+        media.style.backgroundImage = 'url("' + cover + '"), url("/images/pregnancy-7089337.jpg")';
         media.style.backgroundPosition = 'center';
         media.style.backgroundSize = 'cover';
-        media.style.background = `url("${stockCarePhotos[i % stockCarePhotos.length]}") center / cover no-repeat`;
+        media.style.backgroundRepeat = 'no-repeat';
         temp.firstElementChild!.setAttribute('aria-label', s.name);
         temp
           .querySelector('.ag-t')!
@@ -127,10 +134,11 @@ export function buildLandingDocument(data: LandingData) {
               }).format(price.amountMinor)
             : 'Liên hệ để biết giá';
         const title = (s.name || '').toLocaleLowerCase('vi');
-        const photo = /sơ sinh|sinh con|sinh mổ|trẻ/.test(title) ? '/images/pregnancy-7055910.jpg'
-          : /siêu âm|khám|xét nghiệm/.test(title) ? '/images/pregnancy-7089337.jpg'
-          : '/images/pregnancy-7055918.jpg';
-        return `<article class="cd rv service-photo-card" style="--service-photo:url('${photo}')">
+        const fallback = /sơ sinh|sinh con|sinh mổ|trẻ/.test(title) ? '/images/pregnancy-7055910.jpg'
+          : '/images/pregnancy-7089337.jpg';
+        const safe = s.thumbnailUrl && /^https:\/\/res\.cloudinary\.com\/[A-Za-z0-9_/-]+\.webp$/.test(s.thumbnailUrl);
+        const photo = safe ? 'url(' + s.thumbnailUrl + '), url(' + fallback + ')' : 'url(' + fallback + ')';
+        return `<article class="cd rv service-photo-card" style="--service-photo:${photo}">
           <span class="service-card-photo" aria-hidden="true"></span>
           <div class="service-card-content">
             <span class="service-card-number" aria-hidden="true">${String(index + 1).padStart(2, '0')}</span>

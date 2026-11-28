@@ -1,6 +1,17 @@
 #!/bin/sh
 set -eu
 
+assistant_port="${RAG_ASSISTANT_PORT:-8000}"
+case "$assistant_port" in
+  *[!0-9]*|'' ) echo 'RAG_ASSISTANT_PORT must be a TCP port.' >&2; exit 1 ;;
+esac
+if ! [ "$assistant_port" -ge 1 ] || ! [ "$assistant_port" -le 65535 ]; then
+  echo 'RAG_ASSISTANT_PORT must be between 1 and 65535.' >&2
+  exit 1
+fi
+sed "s|http://host.docker.internal:8000|http://host.docker.internal:$assistant_port|" \
+  /usr/local/kong/declarative/kong.yml >/tmp/kong-local.yml
+
 # Bootstrap or migrate in place; never delete the persisted Kong volume.
 if kong migrations list >/dev/null 2>&1; then
   kong migrations up
@@ -8,7 +19,7 @@ if kong migrations list >/dev/null 2>&1; then
 else
   kong migrations bootstrap
 fi
-kong config db_import /usr/local/kong/declarative/kong.yml
+kong config db_import /tmp/kong-local.yml
 
 # Provision the RS256 credential used by Kong's JWT plugin. Public key material
 # is injected at runtime, not committed. Stable names make repeated imports safe.

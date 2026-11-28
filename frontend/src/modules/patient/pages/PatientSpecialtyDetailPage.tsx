@@ -1,3 +1,4 @@
+import { specialtyImage, useCatalogFallback } from '../../../shared/components/portal/catalogImages';
 import { useEffect, useState } from 'react';
 import { AppLink } from '../../../app/navigation';
 import { PublicPortalHeader } from '../../../shared/components/portal/PublicPortalHeader';
@@ -448,7 +449,7 @@ export function PatientSpecialtyDetailPage({
         // Filter exactly matching this specialty
         const list = res.data || [];
         const filtered = list.filter((s) => s.specialtyId === specialty.id);
-        setServices(filtered.length > 0 ? filtered : list);
+        setServices(filtered);
         setServicesLoading(false);
       })
       .catch(() => {
@@ -464,6 +465,7 @@ export function PatientSpecialtyDetailPage({
     specialty?.name ||
     slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   const displayName = rawName.startsWith('Chuyên khoa') ? rawName : rawName;
+  const cover = specialtyImage(specialty?.code);
   const overview = specialty?.overview;
 
   const formatPrice = (amountMinor?: number) => {
@@ -527,6 +529,14 @@ export function PatientSpecialtyDetailPage({
           {/* NỘI DUNG TAB 1: TỔNG QUAN CHUYÊN KHOA (Toàn bộ dữ liệu thật từ DB, không mockdata, không ảnh) */}
           {activeTab === 'overview' && (
             <div className="portal-overview-wrap" role="tabpanel">
+              {cover && (
+                <img
+                  src={cover}
+                  alt={'Ảnh minh họa ' + displayName}
+                  onError={(event) => useCatalogFallback(event.currentTarget)}
+                  style={{ width: '100%', maxHeight: 360, objectFit: 'cover', borderRadius: 12 }}
+                />
+              )}
               {/* Khối 1: Giới thiệu tổng quan */}
               <div className="portal-overview-card">
                 <p className="portal-overview-intro">
@@ -709,13 +719,17 @@ export function PatientSpecialtyDetailPage({
                               >
                                 Xem chi tiết
                               </AppLink>
-                              <AppLink
-                                href={`/dat-lich?serviceId=${encodeURIComponent(svc.id)}`}
-                                className="portal-service-book-btn"
-                              >
-                                <CalendarIcon />
-                                <span>Đặt lịch</span>
-                              </AppLink>
+                              {svc.bookingEnabled === false ? (
+                                <span>Chưa mở đặt trực tuyến</span>
+                              ) : (
+                                <AppLink
+                                  href={`/dat-lich?serviceId=${encodeURIComponent(svc.id)}`}
+                                  className="portal-service-book-btn"
+                                >
+                                  <CalendarIcon />
+                                  <span>Đặt lịch</span>
+                                </AppLink>
+                              )}
                             </div>
                           </div>
                         </div>

@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
   [ValidateSet('Docker','Local','PrepareOnly')]
   [string]$Mode = '',
@@ -80,7 +80,7 @@ if (-not $Mode) {
   $Mode = switch ($choice) { '2' { 'Local' } '3' { 'PrepareOnly' } default { 'Docker' } }
 }
 
-Reset-LocalConfigIfNeeded
+if (-not $modeWasProvided) { Reset-LocalConfigIfNeeded }
 
 if (-not (Test-Path $EnvPath)) {
   Copy-Item (Join-Path $Root '.env.example') $EnvPath
@@ -119,29 +119,88 @@ if ($Mode -eq 'Docker') {
   & $SetupLocal -Mode 'Local'
 }
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-if ($Mode -eq 'Docker' -and -not $NoSeed) {
-  Write-Host '==> Dang seed toan bo du lieu he thong (seed_system_data.js)...' -ForegroundColor Cyan
-  Start-Sleep -Seconds 3
+if (-not $NoSeed) {
+  Write-Host '==> Kiểm tra và khởi tạo dữ liệu demo (seed_system_data.js)...' -ForegroundColor Cyan
   $servicesDir = Join-Path $Root 'services'
+  $priorUrls = @{}
+  # Resolve COMPOSE_FILE entries against the checkout, before entering services.
+  Push-Location $Root
+  try {
+    $resolved = & docker compose --project-directory $Root config --format json
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve the active Compose configuration.' }
+    $config = ($resolved -join "`n") | ConvertFrom-Json
+  } finally {
+    Pop-Location
+  }
   Push-Location $servicesDir
   try {
     if (-not (Test-Path (Join-Path $servicesDir 'node_modules'))) {
-      Write-Host 'Dang cai dat dependencies cho services...' -ForegroundColor Yellow
       npm.cmd ci
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
-    & (Join-Path $PSScriptRoot 'load-env.ps1')
+    # Use the selected Compose project's published ports and server credentials.
+    # Inherited URLs and old .env URLs can refer to a different local project.
+    $databaseServices = @(
+      'auth','doctor','receptionist','catalog','patient','queue','prescription',
+      'appointment','billing','medical-record','document','treatment-plan',
+      'notification','audit-log','reporting','consultation'
+    )
+    foreach ($name in $databaseServices) {
+      $definition = $config.services."$name-database"
+      $ports = @($definition.ports | Where-Object { $_.target -eq 5432 })
+      if ($ports.Count -ne 1 -or $ports[0].published -notmatch '^[0-9]+$') {
+        throw "Expected one published PostgreSQL port for $name."
+      }
+      $binding = $ports[0]
+      if ($binding.host_ip -and $binding.host_ip -notin @('127.0.0.1','0.0.0.0','::','::1')) {
+        throw "Expected a local PostgreSQL binding for $name."
+      }
+      $pg = $definition.environment
+      if (-not ($pg.POSTGRES_USER -and $pg.POSTGRES_PASSWORD -and $pg.POSTGRES_DB)) {
+        throw "Missing Compose PostgreSQL configuration for $name."
+      }
+      $key = ($name.ToUpperInvariant() -replace '-', '_') + '_DATABASE_URL'
+      $priorUrls[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')
+      $user = [Uri]::EscapeDataString($pg.POSTGRES_USER)
+      $password = [Uri]::EscapeDataString($pg.POSTGRES_PASSWORD)
+      $database = [Uri]::EscapeDataString($pg.POSTGRES_DB)
+      $localHost = if ($binding.host_ip -in @('::','::1')) { '[::1]' } else { '127.0.0.1' }
+      $url = 'postgresql://{0}:{1}@{2}:{3}/{4}?schema=public' -f $user,$password,$localHost,$binding.published,$database
+      [Environment]::SetEnvironmentVariable($key, $url, 'Process')
+    }
     node seed_system_data.js
+    $seedExit = $LASTEXITCODE
+    if ($seedExit -ne 0 -and $seedExit -ne 3) { exit $seedExit }
   }
-  finally { Pop-Location }
+  finally {
+    foreach ($key in $priorUrls.Keys) {
+      [Environment]::SetEnvironmentVariable($key, $priorUrls[$key], 'Process')
+    }
+    Pop-Location
+  }
+}
+
+if ($Mode -eq 'Docker') {
+  if (-not $NoBuild) {
+    $resolved = & docker compose --project-directory $Root config --format json
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    $services = (($resolved -join "`n") | ConvertFrom-Json).services
+    $apps = @($services.PSObject.Properties | Where-Object { $_.Value.build -and $_.Value.build.target -ne 'migrator' })
+    # Run built apps in bounded batches by building one service at a time.
+    foreach ($app in $apps) {
+      & docker compose --project-directory $Root build $app.Name
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
+  }
+  & docker compose --project-directory $Root up --no-build -d --wait --wait-timeout 180
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
 Write-Host 'Setup completed.' -ForegroundColor Green
 if ($Mode -eq 'Docker') {
-  Write-Host 'Frontend: http://localhost:3000'
-  Write-Host 'Gateway:  http://localhost:8080'
+  & docker compose --project-directory $Root port frontend 3000
+  & docker compose --project-directory $Root port gateway 8000
 }
 if ($Mode -eq 'Local') {
   Write-Host 'Databases are ready. Start local apps according to docs/first-run.md.'
