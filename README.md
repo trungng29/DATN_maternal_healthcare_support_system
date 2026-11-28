@@ -30,17 +30,21 @@ git --version
 Lệnh khuyến nghị cho máy development mới:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1 -Mode Docker -SeedDemo
+powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1 -Mode Docker
 ```
 
 Script sẽ:
 
-1. Tạo `.env` từ `.env.example`.
+1. Tạo `.env` từ `.env.example` trong bản clone nhánh `mvp`.
 2. Sinh RSA keys và local secrets trong `scripts/keys/`.
 3. Validate Docker Compose.
 4. Build image và khởi động toàn bộ stack.
 5. Chạy các migration service.
-6. Tự động seed toàn diện 14 dịch vụ bằng `seed_system_data.js` (hoặc dùng `-NoSeed` nếu muốn bỏ qua).
+6. Trên database development mới, khởi tạo 5 chuyên khoa, 20 dịch vụ, 12 bác sĩ và 4 lễ tân cùng dữ liệu nền bằng `services/seed_system_data.js`. Có thể dùng `-NoSeed` để bỏ qua bước này.
+
+Project Docker là `maternal-healthcare-support-system`. Web chạy ở `http://localhost:3000` và gateway ở `http://localhost:8080`. Sau khi HIS đã seed, làm theo phần **Run the chatbot with DATN on Windows** trong [RAG-chatbot](https://github.com/wgnamlabs/vietnamese-maternal-health-rag/tree/main) để tạo container `qdrant`, đồng bộ danh mục theo UUID của HIS này và chạy API chatbot.
+
+RAG mặc định nghe cổng `8000`. Nếu cổng này đang được dùng, đặt ví dụ `$env:RAG_ASSISTANT_PORT = '18031'` trước khi chạy setup DATN rồi dùng `& $py -m uvicorn web_app:app --host 0.0.0.0 --port 18031` ở bước chạy API trong repo RAG. Sau khi đổi giá trị này trên stack đã tạo, chạy `docker compose up -d --no-deps --force-recreate kong-init` và kiểm tra init thoát mã 0.
 
 Nếu muốn cấu hình nhưng chưa chạy Docker:
 
@@ -70,7 +74,7 @@ Các lựa chọn:
 powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1 -Mode Local
 ```
 
-Lệnh này khởi động các database cần thiết, generate Prisma client, chạy migration và seed dữ liệu nền. Sau khi hoàn tất, chạy app local theo [mục 6](#6-chạy-app-local-sau-khi-chọn-local).
+Lệnh này khởi động các database cần thiết, generate Prisma client, chạy Prisma migrations và dùng cùng seed chính khi các database còn mới. Sau khi hoàn tất, chạy app local theo [mục 6](#6-chạy-app-local-sau-khi-chọn-local).
 
 Không gọi `scripts/setup-local.ps1` trực tiếp trong workflow mới. File này là implementation nội bộ được `setup.ps1` gọi để tương thích.
 
@@ -228,6 +232,13 @@ npm.cmd run start:dev -- sample-service
 Các service còn lại ưu tiên chạy bằng Docker Compose để bảo đảm đúng dependency, network và gRPC target.
 
 ## 7. Kiểm tra, seed và dừng
+
+### Chọn đúng quy trình theo dữ liệu hiện có
+
+- **Database development mới** chạy setup Docker hoặc Local. Cả hai dùng seed chính sau khi migrations đã thành công. Ảnh dịch vụ, bác sĩ và lễ tân dùng 36 URL Cloudinary sẵn có, ảnh chuyên khoa dùng map 5 mã phía frontend.
+- **Database đã có dữ liệu** setup bỏ qua seed. Muốn chuyển danh mục, dùng scripts/integrate-reviewed-catalog.cjs trong thư mục services. Xem services/scripts/CATALOG_INTEGRATION.md về backup, dry-run, xác minh giao dịch đang mở và rollback.
+- Dữ liệu nội dung y khoa ở DRAFT, phục vụ môi trường demo. Năm dịch vụ mới và MM_PREECLAMPSIA_SCREEN chưa mở đặt. Chạy khởi tạo với dữ liệu mô phỏng và cấu hình development.
+
 
 ```powershell
 # Validate compose

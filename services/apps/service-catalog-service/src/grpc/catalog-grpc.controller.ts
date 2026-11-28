@@ -1,5 +1,6 @@
 import { Controller, UseGuards } from '@nestjs/common';
-import { GrpcMethod } from '@nestjs/microservices';
+import { GrpcMethod, RpcException } from '@nestjs/microservices';
+import { status } from '@grpc/grpc-js';
 import {
   ServiceCallers,
   ServiceJwtGuard,
@@ -7,6 +8,7 @@ import {
   timestampToDate,
 } from '@platform';
 import { CatalogService } from '../catalog/catalog.service';
+import { DomainException } from '../common/domain.exception';
 
 @Controller()
 @UseGuards(ServiceJwtGuard)
@@ -31,6 +33,14 @@ export class CatalogGrpcController {
       doctorRankCode: request.consultationRankCode || undefined,
       at,
       currency: 'VND',
+    }).catch((error: unknown) => {
+      if (error instanceof DomainException && error.code === 'BOOKING_DISABLED') {
+        throw new RpcException({
+          code: status.FAILED_PRECONDITION,
+          message: 'BOOKING_DISABLED',
+        });
+      }
+      throw error;
     });
     return {
       offering: this.offering(result.data, request.consultationRankCode, at),

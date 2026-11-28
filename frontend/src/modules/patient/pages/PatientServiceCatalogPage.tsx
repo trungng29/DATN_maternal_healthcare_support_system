@@ -1,3 +1,4 @@
+import { useCatalogFallback } from '../../../shared/components/portal/catalogImages';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppLink } from '../../../app/navigation';
 import { PublicPortalHeader } from '../../../shared/components/portal/PublicPortalHeader';
@@ -1057,6 +1058,7 @@ export function PatientServiceCatalogPage() {
                             {service.thumbnailUrl ? (
                               <img
                                 src={service.thumbnailUrl}
+                                onError={(event) => useCatalogFallback(event.currentTarget, '/images/pregnancy-7089337.jpg')}
                                 alt={service.name}
                                 className="psc-card-img"
                                 loading="lazy"
@@ -1140,12 +1142,16 @@ export function PatientServiceCatalogPage() {
 
                             {/* Nút hành động */}
                             <div className="psc-card-actions">
-                              <AppLink
-                                href={`/dat-lich?serviceId=${encodeURIComponent(service.id)}`}
-                                className="psc-book-btn"
-                              >
-                                <span>Đặt lịch</span>
-                              </AppLink>
+                              {service.bookingEnabled === false ? (
+                                <span>Chưa mở đặt trực tuyến</span>
+                              ) : (
+                                <AppLink
+                                  href={`/dat-lich?serviceId=${encodeURIComponent(service.id)}`}
+                                  className="psc-book-btn"
+                                >
+                                  <span>Đặt lịch</span>
+                                </AppLink>
+                              )}
                               <AppLink
                                 href={`/dich-vu/${service.slug}`}
                                 className="psc-detail-btn"
@@ -1270,6 +1276,7 @@ export function PatientServiceCatalogPage() {
                 <div className="psc-modal-media">
                   <img
                     src={selectedService.thumbnailUrl}
+                                onError={(event) => useCatalogFallback(event.currentTarget, '/images/pregnancy-7089337.jpg')}
                     alt={selectedService.name}
                   />
                 </div>
@@ -1349,7 +1356,7 @@ export function PatientServiceCatalogPage() {
                     Chi phí niêm yết chính thức:
                   </div>
                   <div style={{ fontSize: 12, color: '#4ade80' }}>
-                    Đã bao gồm thuế GTGT và vật tư y tế cơ bản
+                    Phạm vi dịch vụ và phụ phí cần được cơ sở xác nhận
                   </div>
                 </div>
                 <div className="psc-modal-price-val">
@@ -1366,14 +1373,18 @@ export function PatientServiceCatalogPage() {
               >
                 Đóng
               </button>
-              <AppLink
-                href={`/dat-lich?serviceId=${encodeURIComponent(selectedService.id)}`}
-                className="psc-modal-btn-book"
-                onClick={() => setSelectedService(null)}
-              >
-                <span>Đặt lịch khám dịch vụ này</span>
-                <span>→</span>
-              </AppLink>
+              {selectedService.bookingEnabled === false ? (
+                <span>Chưa mở đặt trực tuyến</span>
+              ) : (
+                <AppLink
+                  href={`/dat-lich?serviceId=${encodeURIComponent(selectedService.id)}`}
+                  className="psc-modal-btn-book"
+                  onClick={() => setSelectedService(null)}
+                >
+                  <span>Đặt lịch khám dịch vụ này</span>
+                  <span>→</span>
+                </AppLink>
+              )}
             </div>
           </div>
         </div>

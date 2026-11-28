@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { specialtyImage } from '../../../../shared/components/portal/catalogImages';
 import template from './template.html?raw';
 import { buildLandingDocument, type LandingData } from './document';
 
@@ -93,11 +94,26 @@ describe('patient landing document adapter', () => {
     expect(doc.querySelector('#patient-summary')).not.toBeNull();
     expect(doc.querySelectorAll('[data-count-to]')).toHaveLength(3);
     expect(doc.querySelector('.ag-m')?.getAttribute('style')).toContain(
-      'images.unsplash.com',
+      '/images/pregnancy-7089337.jpg',
     );
     expect(doc.body.textContent).not.toContain(
       'Số liệu và nội dung giới thiệu minh họa cho đồ án.',
     );
+  });
+
+  it('chooses each specialty image by its API code independently of order', () => {
+    const data = fixture(2);
+    data.specialties[0].code = 'POSTPARTUM_CARE';
+    data.specialties[1].code = 'OBSTETRICS';
+    const imageStyles = (input: LandingData) =>
+      Array.from(parse(buildLandingDocument(input)).querySelectorAll('.ag-m'), image =>
+        image.getAttribute('style'),
+      );
+    const original = imageStyles(data);
+    expect(original[0]).toContain(specialtyImage('POSTPARTUM_CARE'));
+    expect(original[1]).toContain(specialtyImage('OBSTETRICS'));
+    expect(imageStyles({ ...data, specialties: [...data.specialties].reverse() }))
+      .toEqual([...original].reverse());
   });
 
   it('treats API text as data even with HTML, script terminators or replacement tokens', () => {

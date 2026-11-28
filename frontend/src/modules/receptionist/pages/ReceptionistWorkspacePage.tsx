@@ -64,7 +64,7 @@ import { StatsStrip } from '../components/StatsStrip';
 import { WalkInModal } from '../components/WalkInModal';
 import { UserChip } from '../../../shared/components/navigation/UserChip';
 import { DoctorPhotoUpload } from '../../admin/components/DoctorPhotoUpload';
-import { dataUrlToImage, loadPrivateAvatar, uploadProfileImage } from '../../../services/profileImages';
+import { dataUrlToImage, loadReceptionistAvatar, uploadProfileImage } from '../../../services/profileImages';
 import { ReceptionWorkBell } from '../components/ReceptionWorkBell';
 import type { Item as ReceptionWorkItem } from '../components/ReceptionCaseWork';
 import { useReceptionRealtime } from '../hooks/useReceptionRealtime';
@@ -143,12 +143,12 @@ function Desk() {
 
   useEffect(() => {
     let active = true;
-    void loadPrivateAvatar(auth.stream, '/api/receptionists/me/avatar').then((url) => {
+    void loadReceptionistAvatar(auth.stream, auth.request).then((url) => {
       if (active) setAvatarPreview(url);
-      else if (url) URL.revokeObjectURL(url);
+      else if (url?.startsWith('blob:')) URL.revokeObjectURL(url);
     }).catch(() => undefined);
     return () => { active = false; };
-  }, [auth.stream]);
+  }, [auth.stream, auth.request]);
   useEffect(() => () => {
     if (avatarPreview?.startsWith('blob:')) URL.revokeObjectURL(avatarPreview);
   }, [avatarPreview]);
@@ -161,7 +161,7 @@ function Desk() {
       } else {
         await auth.request('/api/receptionists/me/avatar', { method: 'DELETE' });
       }
-      const remote = value ? await loadPrivateAvatar(auth.stream, '/api/receptionists/me/avatar') : null;
+      const remote = await loadReceptionistAvatar(auth.stream, auth.request);
       setAvatarPreview(remote);
       window.dispatchEvent(new Event('profile_avatar_updated'));
       message.success(value ? 'Đã lưu ảnh đại diện trên server.' : 'Đã xóa ảnh đại diện.');
@@ -981,6 +981,7 @@ function Desk() {
 
             <UserChip
               displayName={userName}
+              avatarUrl={avatarPreview}
               showWorkspaceLink={false}
               onLogout={handleLogout}
             />

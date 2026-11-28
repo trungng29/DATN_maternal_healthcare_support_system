@@ -7,6 +7,7 @@ export interface Doctor {
   displayName?: string;
   professionalTitle?: string;
   consultationRank?: string;
+  specialties?: { id?: string; code?: string; name?: string; isPrimary?: boolean }[];
   profile?: { fullName?: string; professionalTitle?: string };
   [key: string]: unknown;
 }

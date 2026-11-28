@@ -1,6 +1,8 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { HttpStatus, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { status } from '@grpc/grpc-js';
 import { GrpcClientFactory, dateToTimestamp } from '@platform';
+import { AppointmentDomainException } from '../common/domain.exception';
 
 @Injectable()
 export class AppointmentDependencyGateway {
@@ -218,6 +220,19 @@ export class AppointmentDependencyGateway {
       });
       return await this.grpc.unary(client, method, request, metadata, deadline);
     } catch (error) {
+      if (
+        key === 'catalog' &&
+        method === 'resolveBookingOffering' &&
+        error && typeof error === 'object' &&
+        'code' in error && error.code === status.FAILED_PRECONDITION &&
+        'details' in error && error.details === 'BOOKING_DISABLED'
+      ) {
+        throw new AppointmentDomainException(
+          'BOOKING_DISABLED',
+          'Medical service is not enabled for booking',
+          HttpStatus.CONFLICT,
+        );
+      }
       throw new ServiceUnavailableException('DEPENDENCY_UNAVAILABLE: ' + key);
     }
   }

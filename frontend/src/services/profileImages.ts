@@ -23,3 +23,22 @@ export async function loadPrivateAvatar(stream: Streamer, path: string): Promise
     throw error;
   }
 }
+
+type ReceptionistAvatarProfile = { profile?: { avatarUrl?: string | null } };
+
+export async function loadReceptionistAvatar(stream: Streamer, request: Requester): Promise<string | null> {
+  const uploaded = await loadPrivateAvatar(stream, '/api/receptionists/me/avatar');
+  if (uploaded) return uploaded;
+
+  const record = await request<ReceptionistAvatarProfile & { data?: ReceptionistAvatarProfile }>('/api/receptionists/me');
+  const avatar = (record.data ?? record).profile?.avatarUrl;
+  if (!avatar) return null;
+  try {
+    const url = new URL(avatar);
+    return url.protocol === 'https:' && url.host === 'res.cloudinary.com' && !url.username && !url.password
+      ? url.href
+      : null;
+  } catch {
+    return null;
+  }
+}

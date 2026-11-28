@@ -143,7 +143,6 @@ export const KNOWN_DOCTOR_SHIFTS: Record<
     endTime: string;
     roomCode: string;
     roomName: string;
-    specialtyName: string;
   }
 > = {
   // P.201 - Phòng khám Sản Phụ khoa 201
@@ -154,7 +153,6 @@ export const KNOWN_DOCTOR_SHIFTS: Record<
     endTime: '12:00',
     roomCode: 'P.201',
     roomName: 'Phòng khám Sản Phụ khoa 201',
-    specialtyName: 'Sản khoa',
   },
   'ThS. BS. Trần Thanh Mai': {
     shiftType: 'AFTERNOON',
@@ -163,7 +161,6 @@ export const KNOWN_DOCTOR_SHIFTS: Record<
     endTime: '17:00',
     roomCode: 'P.201',
     roomName: 'Phòng khám Sản Phụ khoa 201',
-    specialtyName: 'Sản khoa',
   },
   'BS. CKII. Vũ Hoàng Long': {
     shiftType: 'EVENING',
@@ -172,7 +169,6 @@ export const KNOWN_DOCTOR_SHIFTS: Record<
     endTime: '20:30',
     roomCode: 'P.201',
     roomName: 'Phòng khám Sản Phụ khoa 201',
-    specialtyName: 'Hiếm muộn & Hỗ trợ sinh sản',
   },
   // P.203 - Phòng khám Sản Phụ khoa 203
   'PGS. TS. BS. Nguyễn Quang Minh': {
@@ -182,7 +178,6 @@ export const KNOWN_DOCTOR_SHIFTS: Record<
     endTime: '12:00',
     roomCode: 'P.203',
     roomName: 'Phòng khám Sản Phụ khoa 203',
-    specialtyName: 'Y học bào thai & CĐTS',
   },
   'BS. CKI. Đặng Kim Oanh': {
     shiftType: 'AFTERNOON',
@@ -191,7 +186,6 @@ export const KNOWN_DOCTOR_SHIFTS: Record<
     endTime: '17:00',
     roomCode: 'P.203',
     roomName: 'Phòng khám Sản Phụ khoa 203',
-    specialtyName: 'Y học bào thai & CĐTS',
   },
   // P.207 - Phòng khám Sản Phụ khoa 207
   'BS. CKI. Phạm Thùy Dương': {
@@ -201,7 +195,6 @@ export const KNOWN_DOCTOR_SHIFTS: Record<
     endTime: '12:00',
     roomCode: 'P.207',
     roomName: 'Phòng khám Sản Phụ khoa 207',
-    specialtyName: 'Bệnh lý nội khoa thai kỳ',
   },
   'BS. Nguyễn Hồng Nhung': {
     shiftType: 'AFTERNOON',
@@ -210,7 +203,6 @@ export const KNOWN_DOCTOR_SHIFTS: Record<
     endTime: '17:00',
     roomCode: 'P.207',
     roomName: 'Phòng khám Sản Phụ khoa 207',
-    specialtyName: 'Sản khoa',
   },
   'TS. BS. Đoàn Văn Bắc': {
     shiftType: 'EVENING',
@@ -219,7 +211,6 @@ export const KNOWN_DOCTOR_SHIFTS: Record<
     endTime: '20:30',
     roomCode: 'P.207',
     roomName: 'Phòng khám Sản Phụ khoa 207',
-    specialtyName: 'Sản khoa',
   },
 };
 
@@ -282,7 +273,6 @@ export async function fetchCatalog(request: Requester): Promise<DeskCatalog> {
       roomName: d.roomName
         ? String(d.roomName)
         : `Phòng khám ${d.roomCode || '201'}`,
-      specialtyName: 'Sản Phụ khoa',
     };
 
     const slots = generateSlotsForShift(known.startTime, known.endTime, 30);
@@ -290,8 +280,9 @@ export async function fetchCatalog(request: Requester): Promise<DeskCatalog> {
       id,
       name,
       roomCode: known.roomCode,
-      roomName: known.roomName,
-      specialtyName: known.specialtyName,
+      roomName: rooms.find((room) => room.code === known.roomCode)?.name || known.roomName,
+      specialtyName: d.specialties?.find((item) => item.isPrimary)?.name
+        || d.specialties?.[0]?.name || 'Chưa xác định chuyên khoa',
       shiftType: known.shiftType,
       shiftLabel: known.shiftLabel,
       startTime: known.startTime,

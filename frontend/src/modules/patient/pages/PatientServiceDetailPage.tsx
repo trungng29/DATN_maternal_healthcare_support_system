@@ -1,3 +1,4 @@
+import { useCatalogFallback } from '../../../shared/components/portal/catalogImages';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AppLink, navigate } from '../../../app/navigation';
 import { PublicPortalHeader } from '../../../shared/components/portal/PublicPortalHeader';
@@ -120,8 +121,7 @@ const DOCTOR_RANK_LABELS: Record<string, string> = {
   EXPERT: 'Cố vấn Chuyên gia Cao cấp',
 };
 
-const FALLBACK_THUMBNAIL =
-  'https://images.unsplash.com/photo-1579154204601-01588f351e67?auto=format&fit=crop&w=1200&q=85';
+const FALLBACK_THUMBNAIL = '/images/pregnancy-7089337.jpg';
 
 function formatVnd(amount?: number | null): string {
   if (amount == null) return '0 đ';
@@ -509,9 +509,7 @@ export function PatientServiceDetailPage({ serviceId }: { serviceId: string }) {
                 src={service.thumbnailUrl || FALLBACK_THUMBNAIL}
                 alt={service.name}
                 className="hero-thumbnail"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = FALLBACK_THUMBNAIL;
-                }}
+                onError={(e) => useCatalogFallback(e.currentTarget, FALLBACK_THUMBNAIL)}
               />
             </div>
 
@@ -1269,10 +1267,7 @@ export function PatientServiceDetailPage({ serviceId }: { serviceId: string }) {
                         src={rel.thumbnailUrl || FALLBACK_THUMBNAIL}
                         alt={rel.name}
                         className="related-img"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src =
-                            FALLBACK_THUMBNAIL;
-                        }}
+                        onError={(e) => useCatalogFallback(e.currentTarget, FALLBACK_THUMBNAIL)}
                       />
                     </div>
                     <div className="related-card-body">

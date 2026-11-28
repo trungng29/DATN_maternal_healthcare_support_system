@@ -234,7 +234,9 @@ export function UserChip({
   const fallbackEmailName = user?.email ? user.email.split('@')[0] : 'Người dùng';
   const finalName = displayName?.trim() || patientName?.trim() || fallbackEmailName;
   const initials = getInitials(finalName);
-  const finalAvatarUrl = avatarUrlProp !== undefined ? avatarUrlProp : avatarUrl;
+  const candidateAvatar = avatarUrlProp !== undefined ? avatarUrlProp : avatarUrl;
+  const [failedAvatar, setFailedAvatar] = useState<string | null>(null);
+  const finalAvatarUrl = candidateAvatar === failedAvatar ? null : candidateAvatar;
 
   // Close when clicking outside
   useEffect(() => {
@@ -289,7 +291,7 @@ export function UserChip({
         <div className="user-chip-avatar-wrap">
           <div className={`user-chip-avatar role-${roleKey} ${finalAvatarUrl ? 'has-image' : ''}`}>
             {finalAvatarUrl ? (
-              <img src={finalAvatarUrl} alt={finalName} className="user-chip-avatar-img" />
+              <img src={finalAvatarUrl} alt={finalName} className="user-chip-avatar-img" onError={() => setFailedAvatar(finalAvatarUrl)} />
             ) : (
               initials
             )}
@@ -324,7 +326,7 @@ export function UserChip({
           <div className="user-chip-dropdown-header">
             <div className={`user-chip-dropdown-avatar user-chip-avatar role-${roleKey} ${finalAvatarUrl ? 'has-image' : ''}`}>
               {finalAvatarUrl ? (
-                <img src={finalAvatarUrl} alt={finalName} className="user-chip-avatar-img" />
+                <img src={finalAvatarUrl} alt={finalName} className="user-chip-avatar-img" onError={() => setFailedAvatar(finalAvatarUrl)} />
               ) : (
                 initials
               )}

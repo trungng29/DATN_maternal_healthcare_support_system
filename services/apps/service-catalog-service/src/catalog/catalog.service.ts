@@ -836,10 +836,10 @@ export class CatalogService {
       this.specialtyCache.size === 0 ||
       now - this.lastSpecialtyFetch > 60000
     ) {
-      const urls = [
-        'http://doctor-service:5005/doctors/specialties',
-        'http://localhost:5005/doctors/specialties',
-      ];
+      const configured = process.env.DOCTOR_SERVICE_HTTP_URL;
+      const urls = configured
+        ? [configured.replace(/\/$/, '') + '/doctors/specialties']
+        : ['http://doctor-service:5005/doctors/specialties', 'http://localhost:5005/doctors/specialties'];
       for (const url of urls) {
         try {
           const res = await fetch(url, { signal: AbortSignal.timeout(1500) });
@@ -847,8 +847,9 @@ export class CatalogService {
             const body: any = await res.json();
             const list = Array.isArray(body) ? body : body?.data;
             if (Array.isArray(list)) {
+              this.specialtyCache.clear();
               for (const item of list) {
-                if (item && item.id) {
+                if (item?.id && item.name && item.slug) {
                   this.specialtyCache.set(item.id, {
                     id: item.id,
                     name: item.name,
@@ -867,46 +868,10 @@ export class CatalogService {
       }
     }
 
-    if (this.specialtyCache.has(specialtyId)) {
-      return this.specialtyCache.get(specialtyId)!;
-    }
-
-    const staticFallback: Record<
-      string,
-      { id: string; name: string; slug: string; code: string }
-    > = {
-      'fc272dd3-009d-46f8-8d51-b35a723c7d52': {
-        id: 'fc272dd3-009d-46f8-8d51-b35a723c7d52',
-        name: 'Sản khoa',
-        slug: 'san-khoa',
-        code: 'OBSTETRICS',
-      },
-      '9f84d9d3-0ff4-4d71-999e-e5bea709549d': {
-        id: '9f84d9d3-0ff4-4d71-999e-e5bea709549d',
-        name: 'Phụ khoa',
-        slug: 'phu-khoa',
-        code: 'GYNECOLOGY',
-      },
-      'bbf85ca8-348d-445f-9591-9747d5395183': {
-        id: 'bbf85ca8-348d-445f-9591-9747d5395183',
-        name: 'Y học bào thai & Chẩn đoán trước sinh',
-        slug: 'y-hoc-bao-thai-chan-doan-truoc-sinh',
-        code: 'PERINATOLOGY',
-      },
-      'c2a57cf4-2ce7-496d-80ad-b4bb351e53ce': {
-        id: 'c2a57cf4-2ce7-496d-80ad-b4bb351e53ce',
-        name: 'Hiếm muộn & Hỗ trợ sinh sản',
-        slug: 'hiem-muon-ho-tro-sinh-san',
-        code: 'REPRODUCTIVE_ENDOCRINOLOGY',
-      },
-      'cefed4f4-0d8a-44c7-9dc3-f5f1c634e3c6': {
-        id: 'cefed4f4-0d8a-44c7-9dc3-f5f1c634e3c6',
-        name: 'Bệnh lý nội khoa thai kỳ',
-        slug: 'benh-ly-noi-khoa-thai-ky',
-        code: 'MATERNAL_MEDICINE',
-      },
-    };
-    return staticFallback[specialtyId] || null;
+    // Keep the existing nullable response when the upstream record is unavailable.
+    return now - this.lastSpecialtyFetch <= 60000
+      ? this.specialtyCache.get(specialtyId) ?? null
+      : null;
   }
 
   private presentCategory(category: {

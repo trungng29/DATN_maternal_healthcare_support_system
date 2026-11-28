@@ -3,7 +3,6 @@ networks:
   app-network:
     driver: bridge
     external: false
-    name: maternal-healthcare-support-system_app-network
 services:
   appointment-database:
     environment:
@@ -25,7 +24,7 @@ services:
       - host_ip: 0.0.0.0
         mode: ingress
         protocol: tcp
-        published: "5438"
+        published: "${APPOINTMENT_DB_PORT:-5438}"
         target: 5432
     volumes:
       - source: appointment-data
@@ -33,9 +32,8 @@ services:
         type: volume
         volume: {}
   appointment-migrate:
+    image: ${COMPOSE_PROJECT_NAME:-maternal-healthcare-support-system}-migrator:local
     build:
-      args:
-        APP_NAME: appointment-service
       context: ./services
       dockerfile: Dockerfile
       target: migrator
@@ -108,7 +106,7 @@ services:
       - host_ip: 0.0.0.0
         mode: ingress
         protocol: tcp
-        published: "5446"
+        published: "${AUDIT_LOG_DB_PORT:-5446}"
         target: 5432
     volumes:
       - source: audit-log-data
@@ -116,9 +114,8 @@ services:
         type: volume
         volume: {}
   audit-log-migrate:
+    image: ${COMPOSE_PROJECT_NAME:-maternal-healthcare-support-system}-migrator:local
     build:
-      args:
-        APP_NAME: audit-log-service
       context: ./services
       dockerfile: Dockerfile
       target: migrator
@@ -195,9 +192,8 @@ services:
         type: volume
         volume: {}
   auth-migrate:
+    image: ${COMPOSE_PROJECT_NAME:-maternal-healthcare-support-system}-migrator:local
     build:
-      args:
-        APP_NAME: auth-service
       context: ./services
       dockerfile: Dockerfile
       target: migrator
@@ -274,7 +270,7 @@ services:
       - host_ip: 0.0.0.0
         mode: ingress
         protocol: tcp
-        published: "5439"
+        published: "${BILLING_DB_PORT:-5439}"
         target: 5432
     volumes:
       - source: billing-data
@@ -282,9 +278,8 @@ services:
         type: volume
         volume: {}
   billing-migrate:
+    image: ${COMPOSE_PROJECT_NAME:-maternal-healthcare-support-system}-migrator:local
     build:
-      args:
-        APP_NAME: billing-service
       context: ./services
       dockerfile: Dockerfile
       target: migrator
@@ -366,9 +361,8 @@ services:
         type: volume
         volume: {}
   catalog-migrate:
+    image: ${COMPOSE_PROJECT_NAME:-maternal-healthcare-support-system}-migrator:local
     build:
-      args:
-        APP_NAME: service-catalog-service
       context: ./services
       dockerfile: Dockerfile
       target: migrator
@@ -401,7 +395,7 @@ services:
       - host_ip: 0.0.0.0
         mode: ingress
         protocol: tcp
-        published: "5448"
+        published: "${CONSULTATION_DB_PORT:-5448}"
         target: 5432
     volumes:
       - source: consultation-data
@@ -409,9 +403,8 @@ services:
         type: volume
         volume: {}
   consultation-migrate:
+    image: ${COMPOSE_PROJECT_NAME:-maternal-healthcare-support-system}-migrator:local
     build:
-      args:
-        APP_NAME: consultation-service
       context: ./services
       dockerfile: Dockerfile
       target: migrator
@@ -488,9 +481,8 @@ services:
         type: volume
         volume: {}
   doctor-migrate:
+    image: ${COMPOSE_PROJECT_NAME:-maternal-healthcare-support-system}-migrator:local
     build:
-      args:
-        APP_NAME: doctor-service
       context: ./services
       dockerfile: Dockerfile
       target: migrator
@@ -567,7 +559,7 @@ services:
       - host_ip: 0.0.0.0
         mode: ingress
         protocol: tcp
-        published: "5442"
+        published: "${DOCUMENT_DB_PORT:-5442}"
         target: 5432
     volumes:
       - source: document-data
@@ -575,9 +567,8 @@ services:
         type: volume
         volume: {}
   document-migrate:
+    image: ${COMPOSE_PROJECT_NAME:-maternal-healthcare-support-system}-migrator:local
     build:
-      args:
-        APP_NAME: document-service
       context: ./services
       dockerfile: Dockerfile
       target: migrator
@@ -634,6 +625,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
     depends_on:
       gateway:
         condition: service_started
@@ -737,6 +730,7 @@ services:
       AUTH_JWT_ISSUER: ${AUTH_JWT_ISSUER:-maternal-healthcare-auth}
       AUTH_JWT_KEY_ID: ${AUTH_JWT_KEY_ID:-local-dev-key}
       AUTH_JWT_PUBLIC_KEY: ${AUTH_JWT_PUBLIC_KEY:-}
+      RAG_ASSISTANT_PORT: ${RAG_ASSISTANT_PORT:-8000}
       KONG_DATABASE: postgres
       KONG_PG_DATABASE: ${KONG_PG_DATABASE:-kong}
       KONG_PG_HOST: kong-database
@@ -764,7 +758,7 @@ services:
       - host_ip: 0.0.0.0
         mode: ingress
         protocol: tcp
-        published: "5440"
+        published: "${MEDICAL_RECORD_DB_PORT:-5440}"
         target: 5432
     volumes:
       - source: medical-record-data
@@ -772,9 +766,8 @@ services:
         type: volume
         volume: {}
   medical-record-migrate:
+    image: ${COMPOSE_PROJECT_NAME:-maternal-healthcare-support-system}-migrator:local
     build:
-      args:
-        APP_NAME: medical-record-service
       context: ./services
       dockerfile: Dockerfile
       target: migrator
@@ -847,7 +840,7 @@ services:
       - host_ip: 0.0.0.0
         mode: ingress
         protocol: tcp
-        published: "5445"
+        published: "${NOTIFICATION_DB_PORT:-5445}"
         target: 5432
     volumes:
       - source: notification-data
@@ -855,9 +848,8 @@ services:
         type: volume
         volume: {}
   notification-migrate:
+    image: ${COMPOSE_PROJECT_NAME:-maternal-healthcare-support-system}-migrator:local
     build:
-      args:
-        APP_NAME: notification-service
       context: ./services
       dockerfile: Dockerfile
       target: migrator
@@ -943,9 +935,8 @@ services:
         type: volume
         volume: {}
   patient-migrate:
+    image: ${COMPOSE_PROJECT_NAME:-maternal-healthcare-support-system}-migrator:local
     build:
-      args:
-        APP_NAME: patient-service
       context: ./services
       dockerfile: Dockerfile
       target: migrator
@@ -1030,7 +1021,7 @@ services:
       - host_ip: 0.0.0.0
         mode: ingress
         protocol: tcp
-        published: "5443"
+        published: "${PRESCRIPTION_DB_PORT:-5443}"
         target: 5432
     volumes:
       - source: prescription-data
@@ -1038,9 +1029,8 @@ services:
         type: volume
         volume: {}
   prescription-migrate:
+    image: ${COMPOSE_PROJECT_NAME:-maternal-healthcare-support-system}-migrator:local
     build:
-      args:
-        APP_NAME: prescription-service
       context: ./services
       dockerfile: Dockerfile
       target: migrator
@@ -1113,7 +1103,7 @@ services:
       - host_ip: 0.0.0.0
         mode: ingress
         protocol: tcp
-        published: "5441"
+        published: "${QUEUE_DB_PORT:-5441}"
         target: 5432
     volumes:
       - source: queue-data
@@ -1121,9 +1111,8 @@ services:
         type: volume
         volume: {}
   queue-migrate:
+    image: ${COMPOSE_PROJECT_NAME:-maternal-healthcare-support-system}-migrator:local
     build:
-      args:
-        APP_NAME: queue-service
       context: ./services
       dockerfile: Dockerfile
       target: migrator
@@ -1222,9 +1211,8 @@ services:
         type: volume
         volume: {}
   receptionist-migrate:
+    image: ${COMPOSE_PROJECT_NAME:-maternal-healthcare-support-system}-migrator:local
     build:
-      args:
-        APP_NAME: receptionist-service
       context: ./services
       dockerfile: Dockerfile
       target: migrator
@@ -1317,7 +1305,7 @@ services:
       - host_ip: 0.0.0.0
         mode: ingress
         protocol: tcp
-        published: "5447"
+        published: "${REPORTING_DB_PORT:-5447}"
         target: 5432
     volumes:
       - source: reporting-data
@@ -1325,9 +1313,8 @@ services:
         type: volume
         volume: {}
   reporting-migrate:
+    image: ${COMPOSE_PROJECT_NAME:-maternal-healthcare-support-system}-migrator:local
     build:
-      args:
-        APP_NAME: reporting-service
       context: ./services
       dockerfile: Dockerfile
       target: migrator
@@ -1456,7 +1443,7 @@ services:
       - host_ip: 0.0.0.0
         mode: ingress
         protocol: tcp
-        published: "5444"
+        published: "${TREATMENT_PLAN_DB_PORT:-5444}"
         target: 5432
     volumes:
       - source: treatment-plan-data
@@ -1464,9 +1451,8 @@ services:
         type: volume
         volume: {}
   treatment-plan-migrate:
+    image: ${COMPOSE_PROJECT_NAME:-maternal-healthcare-support-system}-migrator:local
     build:
-      args:
-        APP_NAME: treatment-plan-service
       context: ./services
       dockerfile: Dockerfile
       target: migrator
@@ -1521,40 +1507,21 @@ services:
       - ${TREATMENT_PLAN_SERVICE_PORT:-5015}:5015
 volumes:
   appointment-data:
-    name: maternal-healthcare-support-system_appointment-data
   audit-log-data:
-    name: maternal-healthcare-support-system_audit-log-data
   auth-data:
-    name: maternal-healthcare-support-system_auth-data
   billing-data:
-    name: maternal-healthcare-support-system_billing-data
   catalog-data:
-    name: maternal-healthcare-support-system_catalog-data
   consultation-data:
-    name: maternal-healthcare-support-system_consultation-data
   doctor-data:
-    name: maternal-healthcare-support-system_doctor-data
   document-data:
-    name: maternal-healthcare-support-system_document-data
   kong-data:
-    name: maternal-healthcare-support-system_kong-data
   medical-record-data:
-    name: maternal-healthcare-support-system_medical-record-data
   profile-image-data:
-    name: maternal-healthcare-support-system_profile-image-data
   notification-data:
-    name: maternal-healthcare-support-system_notification-data
   patient-data:
-    name: maternal-healthcare-support-system_patient-data
   prescription-data:
-    name: maternal-healthcare-support-system_prescription-data
   queue-data:
-    name: maternal-healthcare-support-system_queue-data
   rabbitmq-data:
-    name: maternal-healthcare-support-system_rabbitmq-data
   receptionist-data:
-    name: maternal-healthcare-support-system_receptionist-data
   reporting-data:
-    name: maternal-healthcare-support-system_reporting-data
   treatment-plan-data:
-    name: maternal-healthcare-support-system_treatment-plan-data
